@@ -214,6 +214,39 @@ def get_interpolation_method(method: str):
 # MCP TOOLS
 # ==============================================================================
 
+def _do_express(emotion: str) -> str:
+    """Internal helper - execute an emotion expression."""
+    if emotion not in EXPRESSIONS:
+        return f"Unknown emotion: {emotion}. Available: {list(EXPRESSIONS.keys())}"
+
+    expr = EXPRESSIONS[emotion]
+    robot = get_robot()
+
+    try:
+        head = expr["head"]
+        antennas = expr["antennas"]
+
+        # Convert antenna degrees to radians
+        antenna_radians = [degrees_to_radians(a) for a in antennas]
+
+        robot.goto_target(
+            head=create_head_pose_array(
+                z=head["z"],
+                roll=head["roll"],
+                pitch=head["pitch"],
+                yaw=head["yaw"]
+            ),
+            antennas=antenna_radians,
+            duration=expr["duration"],
+            method=get_interpolation_method(expr["method"])
+        )
+
+        return f"Expressed: {emotion}"
+
+    except Exception as e:
+        return f"Expression failed: {e}"
+
+
 @mcp.tool()
 def express(
     emotion: Literal[
@@ -248,35 +281,7 @@ def express(
     Returns:
         Confirmation of expression executed
     """
-    if emotion not in EXPRESSIONS:
-        return f"Unknown emotion: {emotion}. Available: {list(EXPRESSIONS.keys())}"
-
-    expr = EXPRESSIONS[emotion]
-    robot = get_robot()
-
-    try:
-        head = expr["head"]
-        antennas = expr["antennas"]
-
-        # Convert antenna degrees to radians
-        antenna_radians = [degrees_to_radians(a) for a in antennas]
-
-        robot.goto_target(
-            head=create_head_pose_array(
-                z=head["z"],
-                roll=head["roll"],
-                pitch=head["pitch"],
-                yaw=head["yaw"]
-            ),
-            antennas=antenna_radians,
-            duration=expr["duration"],
-            method=get_interpolation_method(expr["method"])
-        )
-
-        return f"Expressed: {emotion}"
-
-    except Exception as e:
-        return f"Expression failed: {e}"
+    return _do_express(emotion)
 
 
 @mcp.tool()
@@ -540,7 +545,7 @@ def rest() -> str:
     Returns:
         Confirmation
     """
-    return express("neutral")
+    return _do_express("neutral")
 
 
 @mcp.tool()
