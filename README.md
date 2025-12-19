@@ -77,8 +77,10 @@ AI (Claude/GPT/Grok) → MCP Server → SDK → Daemon → Robot/Simulator
 
 | Provider | Status | Use Case |
 |----------|--------|----------|
-| [Deepgram](https://deepgram.com/) | Supported | TTS (Aura 2) + STT (Nova 2) |
-| [Grok Voice](https://x.ai/news/grok-voice-agent-api) | Coming soon | xAI's expressive voice API |
+| [Grok Voice](https://x.ai/news/grok-voice-agent-api) | ✅ Supported | xAI's expressive voice (Eve, Ara, Leo, Rex, Sal) |
+| [Deepgram](https://deepgram.com/) | ✅ Supported | TTS (Aura 2) + STT (Nova 2) |
+
+Grok Voice is used automatically when `XAI_API_KEY` is set. Falls back to Deepgram otherwise.
 
 ## MCP Config
 
@@ -122,8 +124,12 @@ AI (Claude/GPT/Grok) → MCP Server → SDK → Daemon → Robot/Simulator
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `DEEPGRAM_API_KEY` | Yes | - | TTS and STT via Deepgram |
+| `XAI_API_KEY` | No | - | Grok Voice TTS (preferred) |
+| `GROK_VOICE` | No | `Eve` | Grok voice: Ara, Eve, Leo, Rex, Sal, Mika, Valentin |
+| `DEEPGRAM_API_KEY` | Yes* | - | TTS (fallback) + STT |
 | `REACHY_DAEMON_URL` | No | `http://localhost:8321/api` | Daemon API endpoint |
+
+*Required if `XAI_API_KEY` not set
 
 ## Requirements
 

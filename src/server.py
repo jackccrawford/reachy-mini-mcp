@@ -324,9 +324,17 @@ def look(
 
 def text_to_speech(text: str) -> str:
     """
-    Convert text to speech using Deepgram TTS.
+    Convert text to speech. Uses Grok Voice if available, falls back to Deepgram.
     Returns path to temporary audio file.
     """
+    xai_key = os.environ.get("XAI_API_KEY")
+    if xai_key:
+        return grok_text_to_speech(text, xai_key)
+    return deepgram_text_to_speech(text)
+
+
+def deepgram_text_to_speech(text: str) -> str:
+    """Convert text to speech using Deepgram TTS (Aura 2)."""
     import tempfile
     import httpx
 
@@ -348,6 +356,93 @@ def text_to_speech(text: str) -> str:
     temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
     temp_file.write(response.content)
     temp_file.close()
+
+    return temp_file.name
+
+
+def grok_text_to_speech(text: str, api_key: str) -> str:
+    """
+    Convert text to speech using Grok Voice Agent API (WebSocket).
+
+    Uses the OpenAI Realtime-compatible protocol to get TTS from Grok.
+    Available voices: Ara, Eve, Leo, Rex, Sal, Mika, Valentin
+    """
+    import tempfile
+    import json
+    import asyncio
+    from websockets.sync.client import connect
+
+    voice = os.environ.get("GROK_VOICE", "Eve")
+    ws_url = "wss://api.x.ai/v1/realtime"
+
+    audio_chunks = []
+
+    with connect(
+        ws_url,
+        additional_headers={"Authorization": f"Bearer {api_key}"}
+    ) as ws:
+        # Configure session
+        ws.send(json.dumps({
+            "type": "session.update",
+            "session": {
+                "voice": voice,
+                "modalities": ["audio", "text"],
+                "instructions": "You are a text-to-speech system. Repeat exactly what the user says, nothing more.",
+                "turn_detection": None  # Disable VAD - we're doing one-shot TTS
+            }
+        }))
+
+        # Send text to speak
+        ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": f"Say exactly: {text}"}]
+            }
+        }))
+
+        # Request response
+        ws.send(json.dumps({"type": "response.create"}))
+
+        # Collect audio chunks
+        while True:
+            try:
+                msg = json.loads(ws.recv(timeout=10))
+
+                if msg["type"] == "response.output_audio.delta":
+                    # Audio chunk (base64 PCM)
+                    audio_chunks.append(msg["delta"])
+
+                elif msg["type"] == "response.output_audio.done":
+                    # Audio complete
+                    break
+
+                elif msg["type"] == "response.done":
+                    # Response complete
+                    break
+
+                elif msg["type"] == "error":
+                    raise RuntimeError(f"Grok error: {msg.get('error', msg)}")
+
+            except TimeoutError:
+                break
+
+    if not audio_chunks:
+        raise RuntimeError("No audio received from Grok")
+
+    # Decode base64 audio chunks and combine
+    import base64
+    pcm_data = b"".join(base64.b64decode(chunk) for chunk in audio_chunks)
+
+    # Convert PCM to WAV (Grok outputs 24kHz 16-bit mono PCM)
+    import wave
+    temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    with wave.open(temp_file.name, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)  # 16-bit
+        wav.setframerate(24000)  # Grok uses 24kHz
+        wav.writeframes(pcm_data)
 
     return temp_file.name
 

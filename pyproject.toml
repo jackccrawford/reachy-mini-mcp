@@ -10,6 +10,7 @@ packages = [{include = "src"}]
 python = "^3.10"
 fastmcp = "^2.0.0"
 reachy-mini = {git = "https://github.com/pollen-robotics/reachy_mini.git", branch = "develop", extras = ["mujoco"]}
+websockets = "^13.0"
 
 [tool.poetry.scripts]
 reachy-mini-mcp = "src.server:main"
