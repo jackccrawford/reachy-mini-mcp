@@ -248,12 +248,13 @@ def _do_express(emotion: str) -> str:
 
 
 @mcp.tool()
-def express(
+def show(
     emotion: Literal[
         "neutral", "curious", "uncertain", "recognition", "joy",
         "thinking", "listening", "agreeing", "disagreeing",
         "sleepy", "surprised", "focused"
-    ]
+    ] = "neutral",
+    move: str = ""
 ) -> str:
     """
     Express an emotion through physical movement.
@@ -261,31 +262,29 @@ def express(
     High-level tool that maps emotions to motor choreography.
     Caller specifies WHAT to express; tool handles HOW to move.
 
-    Available emotions:
-    - neutral: Rest position, attentive
-    - curious: Forward lean, alert antennas - "what's that?"
-    - uncertain: Head tilt, asymmetric antennas - "I'm not sure"
-    - recognition: Quick attention, high antennas - "I see you"
-    - joy: Head up, maximum antenna elevation - happiness
-    - thinking: Look away slightly, processing
-    - listening: Attentive lean, focused on input
-    - agreeing: Nodding motion
-    - disagreeing: Shake motion
-    - sleepy: Drooping, low energy
-    - surprised: Pull back, maximum alert
-    - focused: Intent forward gaze
+    Use `emotion` for 12 built-in expressions (fast, local):
+    - neutral, curious, uncertain, recognition, joy
+    - thinking, listening, agreeing, disagreeing
+    - sleepy, surprised, focused
+
+    Use `move` for 81 recorded emotions from Pollen (e.g., "fear1", "loving1"):
+    - More nuanced, professionally choreographed
+    - Use list_moves() to see all available
 
     Args:
-        emotion: The emotional state to express
+        emotion: Built-in emotional state to express
+        move: Recorded move name (overrides emotion if provided)
 
     Returns:
         Confirmation of expression executed
     """
+    if move:
+        return _do_play_move(move)
     return _do_express(emotion)
 
 
 @mcp.tool()
-def look_at(
+def look(
     roll: float = 0,
     pitch: float = 0,
     yaw: float = 0,
@@ -295,7 +294,7 @@ def look_at(
     """
     Direct head positioning in degrees.
 
-    Use this for precise control when express() doesn't fit.
+    Use for precise control when express() doesn't fit.
     For most cases, prefer express() for cognitive simplicity.
 
     Args:
@@ -306,7 +305,7 @@ def look_at(
         duration: Movement time in seconds (0.1 to 5.0)
 
     Returns:
-        Confirmation of movement
+        Confirmation
     """
     # Clamp values to safe ranges
     roll = max(-45, min(45, roll))
@@ -327,84 +326,6 @@ def look_at(
 
     except Exception as e:
         return f"Movement failed: {e}"
-
-
-@mcp.tool()
-def antenna(
-    left: float = 0,
-    right: float = 0,
-    duration: float = 0.5
-) -> str:
-    """
-    Control antenna positions for expression.
-
-    Antennas are highly expressive - use for emotional signaling.
-    Symmetric = stable emotion. Asymmetric = uncertainty/confusion.
-
-    Args:
-        left: Left antenna angle (-45 to 90). Positive = up
-        right: Right antenna angle (-45 to 90). Positive = up
-        duration: Movement time in seconds
-
-    Returns:
-        Confirmation
-    """
-    left = max(-45, min(90, left))
-    right = max(-45, min(90, right))
-    duration = max(0.1, min(3.0, duration))
-
-    robot = get_robot()
-
-    try:
-        robot.goto_target(
-            antennas=[degrees_to_radians(left), degrees_to_radians(right)],
-            duration=duration,
-            method=get_interpolation_method("ease_in_out")
-        )
-        return f"Antennas: left={left}°, right={right}°"
-
-    except Exception as e:
-        return f"Antenna movement failed: {e}"
-
-
-@mcp.tool()
-def rotate(
-    direction: Literal["left", "right", "center"],
-    degrees: float = 45
-) -> str:
-    """
-    Rotate body toward a direction.
-
-    Use to orient toward or away from something.
-
-    Args:
-        direction: Which way to turn
-        degrees: How far to turn (10-180)
-
-    Returns:
-        Confirmation
-    """
-    degrees = max(10, min(180, abs(degrees)))
-
-    if direction == "left":
-        yaw = -degrees_to_radians(degrees)
-    elif direction == "right":
-        yaw = degrees_to_radians(degrees)
-    else:  # center
-        yaw = 0
-
-    robot = get_robot()
-
-    try:
-        robot.goto_target(
-            body_yaw=yaw,
-            duration=1.5,
-            method=get_interpolation_method("minjerk")
-        )
-        return f"Rotated {direction}" + (f" {degrees}°" if direction != "center" else "")
-
-    except Exception as e:
-        return f"Rotation failed: {e}"
 
 
 def text_to_speech(text: str) -> str:
@@ -508,7 +429,7 @@ def _parse_choreographed_text(text: str) -> list[dict]:
 
 
 @mcp.tool()
-def speak(text: str) -> str:
+def speak(text: str, listen_after: float = 0) -> str:
     """
     Speak through the robot's speaker.
 
@@ -523,21 +444,24 @@ def speak(text: str) -> str:
 
     Args:
         text: What to say, optionally with [move:name] markers
+        listen_after: Seconds to listen after speaking (0 = don't listen)
 
     Returns:
-        Confirmation
+        Confirmation, plus transcription if listen_after > 0
     """
     import os
     robot = get_robot()
+
+    result_parts = []
 
     try:
         # Check if it's a file path (no choreography support for raw audio)
         if text.endswith(('.wav', '.mp3', '.ogg')):
             robot.media.play_sound(text)
-            return f"Played audio: {text}"
+            result_parts.append(f"Played audio: {text}")
 
         # Check for embedded moves
-        if '[move:' in text:
+        elif '[move:' in text:
             segments = _parse_choreographed_text(text)
             moves_triggered = []
             speech_parts = []
@@ -567,17 +491,80 @@ def speak(text: str) -> str:
                 _do_play_move(pending_move)
                 moves_triggered.append(pending_move)
 
-            return f"Performed: '{' '.join(speech_parts)}' with moves: {moves_triggered}"
+            result_parts.append(f"Performed: '{' '.join(speech_parts)}' with moves: {moves_triggered}")
 
         else:
             # Simple speech - no choreography
             audio_path = text_to_speech(text)
             robot.media.play_sound(audio_path)
             os.unlink(audio_path)
-            return f"Spoke: {text}"
+            result_parts.append(f"Spoke: {text}")
+
+        # Listen after speaking if requested
+        if listen_after > 0:
+            transcript = _do_listen(listen_after)
+            if transcript:
+                result_parts.append(f"Heard: {transcript}")
+            else:
+                result_parts.append("Heard: (silence or unclear audio)")
+
+        return " | ".join(result_parts)
 
     except Exception as e:
         return f"Speech failed: {e}"
+
+
+def _do_listen(duration: float) -> str:
+    """Internal helper - capture and transcribe audio."""
+    import time
+    import io
+    import wave
+    import numpy as np
+
+    duration = max(1, min(30, duration))
+    robot = get_robot()
+
+    # Start recording
+    robot.media.start_recording()
+
+    # Wait for the specified duration
+    time.sleep(duration)
+
+    # Get the recorded audio
+    audio_data = robot.media.get_audio_sample()
+
+    # Stop recording
+    robot.media.stop_recording()
+
+    if audio_data is not None and len(audio_data) > 0:
+        # Convert numpy array to WAV bytes for Deepgram
+        sample_rate = robot.media.get_input_audio_samplerate()
+        channels = robot.media.get_input_channels()
+
+        # Create WAV file in memory
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, 'wb') as wav_file:
+            wav_file.setnchannels(channels if channels > 0 else 1)
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(sample_rate if sample_rate > 0 else 16000)
+
+            # Convert float32 to int16
+            if isinstance(audio_data, np.ndarray):
+                if audio_data.dtype == np.float32:
+                    audio_int16 = (audio_data * 32767).astype(np.int16)
+                else:
+                    audio_int16 = audio_data.astype(np.int16)
+                wav_file.writeframes(audio_int16.tobytes())
+            else:
+                wav_file.writeframes(audio_data)
+
+        wav_bytes = wav_buffer.getvalue()
+
+        # Transcribe via Deepgram STT
+        transcript = speech_to_text(wav_bytes)
+        return transcript if transcript else ""
+    else:
+        return ""
 
 
 @mcp.tool()
@@ -594,67 +581,18 @@ def listen(duration: float = 3.0) -> str:
     Returns:
         Transcribed text of what was heard
     """
-    import time
-    import io
-    import wave
-    import numpy as np
-
-    duration = max(1, min(30, duration))
-    robot = get_robot()
-
     try:
-        # Start recording
-        robot.media.start_recording()
-
-        # Wait for the specified duration
-        time.sleep(duration)
-
-        # Get the recorded audio
-        audio_data = robot.media.get_audio_sample()
-
-        # Stop recording
-        robot.media.stop_recording()
-
-        if audio_data is not None and len(audio_data) > 0:
-            # Convert numpy array to WAV bytes for Deepgram
-            sample_rate = robot.media.get_input_audio_samplerate()
-            channels = robot.media.get_input_channels()
-
-            # Create WAV file in memory
-            wav_buffer = io.BytesIO()
-            with wave.open(wav_buffer, 'wb') as wav_file:
-                wav_file.setnchannels(channels if channels > 0 else 1)
-                wav_file.setsampwidth(2)  # 16-bit
-                wav_file.setframerate(sample_rate if sample_rate > 0 else 16000)
-
-                # Convert float32 to int16
-                if isinstance(audio_data, np.ndarray):
-                    if audio_data.dtype == np.float32:
-                        audio_int16 = (audio_data * 32767).astype(np.int16)
-                    else:
-                        audio_int16 = audio_data.astype(np.int16)
-                    wav_file.writeframes(audio_int16.tobytes())
-                else:
-                    wav_file.writeframes(audio_data)
-
-            wav_bytes = wav_buffer.getvalue()
-
-            # Transcribe via Deepgram STT
-            transcript = speech_to_text(wav_bytes)
-
-            if transcript:
-                return f"Heard: {transcript}"
-            else:
-                return "Heard: (silence or unclear audio)"
+        transcript = _do_listen(duration)
+        if transcript:
+            return f"Heard: {transcript}"
         else:
-            return "No audio captured"
-
+            return "Heard: (silence or unclear audio)"
     except Exception as e:
         return f"Listen failed: {e}"
 
 
 @mcp.tool()
-def see() -> str:
+def snap() -> str:
     """
     Capture an image from the robot's camera.
 
@@ -684,53 +622,31 @@ def see() -> str:
 
 
 @mcp.tool()
-def rest() -> str:
+def rest(mode: Literal["neutral", "sleep", "wake"] = "neutral") -> str:
     """
-    Return to neutral rest position.
+    Control robot rest state.
 
-    Use when transitioning away or ending interaction.
-    Gentle movement to default pose.
-
-    Returns:
-        Confirmation
-    """
-    return _do_express("neutral")
-
-
-@mcp.tool()
-def wake_up() -> str:
-    """
-    Wake up the robot from sleep mode.
-
-    Call this before any other movements.
+    Args:
+        mode:
+            - "neutral": Return to neutral pose (default)
+            - "sleep": Enter sleep mode (low power)
+            - "wake": Wake from sleep mode
 
     Returns:
         Confirmation
     """
     robot = get_robot()
     try:
-        robot.wake_up()
-        return "Robot awakened"
+        if mode == "sleep":
+            robot.goto_sleep()
+            return "Robot sleeping"
+        elif mode == "wake":
+            robot.wake_up()
+            return "Robot awakened"
+        else:  # neutral
+            return _do_express("neutral")
     except Exception as e:
-        return f"Wake up failed: {e}"
-
-
-@mcp.tool()
-def sleep() -> str:
-    """
-    Put the robot into sleep mode.
-
-    Use when ending interaction or to save power.
-
-    Returns:
-        Confirmation
-    """
-    robot = get_robot()
-    try:
-        robot.goto_sleep()
-        return "Robot sleeping"
-    except Exception as e:
-        return f"Sleep failed: {e}"
+        return f"Rest failed: {e}"
 
 
 # ==============================================================================
@@ -746,18 +662,18 @@ MOVE_LIBRARIES = {
 
 
 @mcp.tool()
-def list_moves(library: Literal["emotions", "dances"] = "emotions") -> str:
+def discover(library: Literal["emotions", "dances"] = "emotions") -> str:
     """
-    List available recorded moves from Pollen's HuggingFace libraries.
+    Discover available moves from Pollen's HuggingFace libraries.
 
-    Returns move names that can be passed to play_move().
+    Returns move names that can be passed to express(move=...).
     Moves are professionally choreographed by Pollen Robotics.
 
     Args:
-        library: Which library to list - "emotions" (40+ expressions) or "dances"
+        library: Which library - "emotions" (81 expressions) or "dances"
 
     Returns:
-        List of available move names
+        Available move names
     """
     import httpx
 
@@ -801,118 +717,6 @@ def _do_play_move(move_name: str, library: str = "emotions") -> str:
         return "Cannot connect to daemon. Is it running on localhost:8321?"
     except Exception as e:
         return f"Failed to play move: {e}"
-
-
-@mcp.tool()
-def play_move(
-    move_name: str,
-    library: Literal["emotions", "dances"] = "emotions"
-) -> str:
-    """
-    Play a recorded move from Pollen's libraries.
-
-    Use list_moves() first to see available options.
-    These are professionally choreographed expressions with
-    nuanced head, antenna, and body movements.
-
-    Examples: fear1, loving1, dance3, rage1, serenity1, proud3
-
-    Args:
-        move_name: Name of the move (e.g., "fear1", "dance3")
-        library: Which library - "emotions" or "dances"
-
-    Returns:
-        Confirmation or error
-    """
-    return _do_play_move(move_name, library)
-
-
-# ==============================================================================
-# COMPOUND EXPRESSIONS (sequences)
-# ==============================================================================
-
-@mcp.tool()
-def nod(times: int = 2) -> str:
-    """
-    Nod head in agreement.
-
-    Args:
-        times: Number of nods (1-5)
-
-    Returns:
-        Confirmation
-    """
-    times = max(1, min(5, times))
-    robot = get_robot()
-
-    try:
-        for _ in range(times):
-            # Nod down
-            robot.goto_target(
-                head=create_head_pose_array(pitch=15, z=3),
-                duration=0.25,
-                method=get_interpolation_method("ease_in_out")
-            )
-            # Nod up
-            robot.goto_target(
-                head=create_head_pose_array(pitch=-5, z=-2),
-                duration=0.25,
-                method=get_interpolation_method("ease_in_out")
-            )
-
-        # Return to neutral
-        robot.goto_target(
-            head=create_head_pose_array(pitch=0, z=0),
-            duration=0.3,
-            method=get_interpolation_method("minjerk")
-        )
-
-        return f"Nodded {times} time(s)"
-
-    except Exception as e:
-        return f"Nod failed: {e}"
-
-
-@mcp.tool()
-def shake(times: int = 2) -> str:
-    """
-    Shake head in disagreement.
-
-    Args:
-        times: Number of shakes (1-5)
-
-    Returns:
-        Confirmation
-    """
-    times = max(1, min(5, times))
-    robot = get_robot()
-
-    try:
-        for _ in range(times):
-            # Turn right
-            robot.goto_target(
-                head=create_head_pose_array(yaw=20),
-                duration=0.2,
-                method=get_interpolation_method("ease_in_out")
-            )
-            # Turn left
-            robot.goto_target(
-                head=create_head_pose_array(yaw=-20),
-                duration=0.2,
-                method=get_interpolation_method("ease_in_out")
-            )
-
-        # Return to center
-        robot.goto_target(
-            head=create_head_pose_array(yaw=0),
-            duration=0.3,
-            method=get_interpolation_method("minjerk")
-        )
-
-        return f"Shook head {times} time(s)"
-
-    except Exception as e:
-        return f"Shake failed: {e}"
 
 
 # ==============================================================================

@@ -11,7 +11,7 @@ MCP server for [Pollen Robotics Reachy Mini](https://www.pollen-robotics.com/rea
 cd reachy-mini-mcp
 poetry install
 
-# Set TTS key (optional, for speak())
+# Set API key (required for speak/listen)
 export DEEPGRAM_API_KEY=your_key_here
 
 # Start simulator daemon
@@ -27,58 +27,43 @@ poetry run python src/server.py
 MCP Tool → SDK Call → Daemon → Robot/Simulator
 ```
 
-High-level `express()` abstracts motor control into semantic actions.
-Low-level tools available for precise control when needed.
+7 tools following Miller's Law - fits in working memory.
 
 ## Tools
 
-### Expression (Preferred)
-
 | Tool | Args | Purpose |
 |------|------|---------|
-| `express` | `emotion: str` | Execute built-in emotion (12 options) |
-| `play_move` | `move_name, library` | Play recorded move from Pollen's library |
-| `list_moves` | `library` | Discover available recorded moves |
-| `nod` | `times: int = 2` | Agreement gesture |
-| `shake` | `times: int = 2` | Disagreement gesture |
-| `rest` | - | Return to neutral pose |
+| `speak` | `text, listen_after=0` | Voice + gesture, optionally listen after |
+| `listen` | `duration=3` | STT via Deepgram Nova-2 |
+| `snap` | - | Camera capture (base64 JPEG) |
+| `show` | `emotion, move=""` | Express emotion or play recorded move |
+| `look` | `roll, pitch, yaw, z, duration` | Head positioning (degrees) |
+| `rest` | `mode="neutral"` | neutral / sleep / wake |
+| `discover` | `library="emotions"` | Find available recorded moves |
 
-**Built-in emotions (express):** `neutral`, `curious`, `uncertain`, `recognition`, `joy`, `thinking`, `listening`, `agreeing`, `disagreeing`, `sleepy`, `surprised`, `focused`
+### speak()
 
-**Recorded moves (play_move):** 40+ from Pollen's HuggingFace libraries - `fear1`, `rage1`, `loving1`, `serenity1`, `contempt1`, `dance3`, etc. Use `list_moves()` to discover all options.
+Supports embedded move markers for choreographed speech:
 
-### Motor Control
+```
+speak("[move:curious1] What's this? [move:surprised1] Oh wow!")
+```
 
-| Tool | Args | Purpose |
-|------|------|---------|
-| `look_at` | `roll, pitch, yaw, z, duration` | Head positioning (degrees) |
-| `antenna` | `left, right, duration` | Antenna angles (degrees) |
-| `rotate` | `direction, degrees` | Body rotation |
+Moves fire right before their speech chunk. Use `listen_after=5` to hear response.
 
-### I/O
+### show()
 
-| Tool | Args | Purpose |
-|------|------|---------|
-| `speak` | `text: str` | TTS output (requires DEEPGRAM_API_KEY) |
-| `listen` | `duration: float = 3.0` | Audio capture (base64) |
-| `see` | - | Camera capture (base64 JPEG) |
+Built-in emotions (fast, local):
+`neutral`, `curious`, `uncertain`, `recognition`, `joy`, `thinking`, `listening`, `agreeing`, `disagreeing`, `sleepy`, `surprised`, `focused`
 
-### Lifecycle
+Recorded moves (81 from Pollen):
+```
+show(move="loving1")
+show(move="fear1")
+show(move="serenity1")
+```
 
-| Tool | Purpose |
-|------|---------|
-| `wake_up` | Initialize robot motors |
-| `sleep` | Power down motors |
-
-## Expression Vocabulary
-
-Each emotion maps to choreography:
-- **Head pose:** roll, pitch, yaw (degrees)
-- **Antennas:** left, right angles (degrees)
-- **Duration:** movement time (seconds)
-- **Interpolation:** linear, minjerk, ease_in_out, cartoon
-
-Example: `curious` → head forward (pitch +10, yaw +8), antennas up (+20, +20), 1.2s, ease_in_out
+Use `discover()` to see all available moves.
 
 ## MCP Config
 
@@ -118,20 +103,18 @@ Example: `curious` → head forward (pitch +10, yaw +8), antennas up (+20, +20),
 }
 ```
 
-**Note:** The `env` block is required for `speak()` TTS. Get a free API key at [deepgram.com](https://deepgram.com).
-
 ## Requirements
 
 - Python 3.10+
 - [reachy-mini SDK](https://github.com/pollen-robotics/reachy_mini) (installed via poetry)
 - MuJoCo (for simulation)
-- Deepgram API key (for TTS, optional)
+- Deepgram API key (for speak/listen)
 
 ## Hardware Notes
 
 - **Simulator:** `mjpython` required on macOS for MuJoCo visualization
 - **Real hardware:** Same MCP server, daemon auto-connects
-- **Port conflicts:** Zenoh uses 7447, daemon uses 8765 by default
+- **Port conflicts:** Zenoh uses 7447, daemon uses 8321 by default
 
 ## License
 
