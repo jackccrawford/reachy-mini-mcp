@@ -594,15 +594,53 @@ def listen(duration: float = 3.0) -> str:
     Returns:
         Transcribed text of what was heard
     """
+    import time
+    import io
+    import wave
+    import numpy as np
+
     duration = max(1, min(30, duration))
     robot = get_robot()
 
     try:
-        audio_data = robot.media.get_audio_sample(duration=duration)
+        # Start recording
+        robot.media.start_recording()
+
+        # Wait for the specified duration
+        time.sleep(duration)
+
+        # Get the recorded audio
+        audio_data = robot.media.get_audio_sample()
+
+        # Stop recording
+        robot.media.stop_recording()
 
         if audio_data is not None and len(audio_data) > 0:
+            # Convert numpy array to WAV bytes for Deepgram
+            sample_rate = robot.media.get_input_audio_samplerate()
+            channels = robot.media.get_input_channels()
+
+            # Create WAV file in memory
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(channels if channels > 0 else 1)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(sample_rate if sample_rate > 0 else 16000)
+
+                # Convert float32 to int16
+                if isinstance(audio_data, np.ndarray):
+                    if audio_data.dtype == np.float32:
+                        audio_int16 = (audio_data * 32767).astype(np.int16)
+                    else:
+                        audio_int16 = audio_data.astype(np.int16)
+                    wav_file.writeframes(audio_int16.tobytes())
+                else:
+                    wav_file.writeframes(audio_data)
+
+            wav_bytes = wav_buffer.getvalue()
+
             # Transcribe via Deepgram STT
-            transcript = speech_to_text(audio_data)
+            transcript = speech_to_text(wav_bytes)
 
             if transcript:
                 return f"Heard: {transcript}"
