@@ -491,7 +491,6 @@ def speak(text: str) -> str:
         Confirmation
     """
     import os
-    import re
     robot = get_robot()
 
     try:
@@ -505,25 +504,33 @@ def speak(text: str) -> str:
             segments = _parse_choreographed_text(text)
             moves_triggered = []
             speech_parts = []
+            pending_move = None
 
             for segment in segments:
                 if segment["type"] == "move":
-                    # Fire move immediately (non-blocking on daemon side)
-                    result = _do_play_move(segment["name"])
-                    moves_triggered.append(segment["name"])
+                    # Queue the move to fire before the next speech chunk
+                    pending_move = segment["name"]
                 elif segment["type"] == "text":
                     content = segment["content"].strip()
                     if content:
+                        # Fire pending move right before this speech chunk
+                        if pending_move:
+                            _do_play_move(pending_move)
+                            moves_triggered.append(pending_move)
+                            pending_move = None
+
+                        # Speak this chunk
+                        audio_path = text_to_speech(content)
+                        robot.media.play_sound(audio_path)
+                        os.unlink(audio_path)
                         speech_parts.append(content)
 
-            # Combine speech parts and speak
-            full_speech = " ".join(speech_parts)
-            if full_speech:
-                audio_path = text_to_speech(full_speech)
-                robot.media.play_sound(audio_path)
-                os.unlink(audio_path)
+            # Fire any trailing move (if text ends with a move marker)
+            if pending_move:
+                _do_play_move(pending_move)
+                moves_triggered.append(pending_move)
 
-            return f"Performed: '{full_speech}' with moves: {moves_triggered}"
+            return f"Performed: '{' '.join(speech_parts)}' with moves: {moves_triggered}"
 
         else:
             # Simple speech - no choreography
