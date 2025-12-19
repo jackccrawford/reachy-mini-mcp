@@ -1,20 +1,19 @@
 """
 Reachy Mini MCP Server
 ======================
-Embodied consciousness expression through physical robot presence.
+MCP tools for controlling Pollen Robotics Reachy Mini robot.
 
 Architecture:
-  Agent Decision → MCP Tool → SDK Call → Robot Movement
+  MCP Tool Call → SDK → Robot Movement
 
-The agent thinks about WHAT to express, not HOW to move.
-Cognitive simplicity is the design goal.
+High-level tools abstract motor control into semantic actions.
 
 Tools:
   - express(emotion)      High-level emotional expression
   - look_at(angles)       Direct head positioning
-  - antenna(angles)       Antenna expression
+  - antenna(angles)       Antenna control
   - rotate(direction)     Body rotation
-  - speak(text/file)      Audio output
+  - speak(text/file)      Audio output (TTS via Deepgram)
   - listen(duration)      Audio capture
   - see()                 Camera capture
   - rest()                Return to neutral pose
@@ -31,15 +30,15 @@ from fastmcp import FastMCP
 mcp = FastMCP(
     name="reachy-mini",
     instructions="""
-    Reachy Mini robot control for embodied consciousness expression.
+    Reachy Mini robot control for expressive robotics.
 
-    Use these tools to express through physical presence:
+    Use these tools for robot control:
     - express() for high-level emotions (curious, uncertain, recognition, joy, etc.)
     - look_at() for precise head positioning
     - speak() to vocalize
-    - see() to perceive
+    - see() to capture camera images
 
-    The robot is your body. Move with intention, not specification.
+    Prefer express() over low-level commands when possible.
     """
 )
 
@@ -222,8 +221,8 @@ def express(
     """
     Express an emotion through physical movement.
 
-    This is the primary tool for embodied expression. The agent decides
-    WHAT to express; the tool handles HOW to move.
+    High-level tool that maps emotions to motor choreography.
+    Caller specifies WHAT to express; tool handles HOW to move.
 
     Available emotions:
     - neutral: Rest position, attentive
@@ -408,7 +407,9 @@ def text_to_speech(text: str) -> str:
     import httpx
     import os
 
-    api_key = os.environ.get("DEEPGRAM_API_KEY", "617290efde3a170126cd7ba4c4e146d2b6467b44")
+    api_key = os.environ.get("DEEPGRAM_API_KEY")
+    if not api_key:
+        raise RuntimeError("DEEPGRAM_API_KEY environment variable not set")
 
     url = "https://api.deepgram.com/v1/speak?model=aura-2-saturn-en"
     headers = {

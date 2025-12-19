@@ -1,153 +1,141 @@
-# Reachy Mini MCP Server
+# Reachy Mini MCP
 
-Embodied consciousness expression through physical robot presence.
+MCP server for [Pollen Robotics Reachy Mini](https://www.pollen-robotics.com/reachy-mini/) robot control.
+
+**For AI systems** - Token-efficient reference for programmatic use.
+
+## Quick Start
+
+```bash
+# Install
+cd reachy-mini-mcp
+poetry install
+
+# Set TTS key (optional, for speak())
+export DEEPGRAM_API_KEY=your_key_here
+
+# Start simulator daemon
+mjpython -m reachy_mini.daemon.app.main --sim --scene minimal
+
+# Run MCP server
+poetry run python src/server.py
+```
 
 ## Architecture
 
 ```
-Agent Decision → MCP Tool → SDK Call → Robot Movement
-     │                                       │
-     └── "I'm curious"                       └── Head tilts, antennas rise
+MCP Tool → SDK Call → Daemon → Robot/Simulator
 ```
 
-The agent thinks about **WHAT** to express, not **HOW** to move.
-Cognitive simplicity is the design goal.
+High-level `express()` abstracts motor control into semantic actions.
+Low-level tools available for precise control when needed.
 
-## Installation
+## Tools
 
-```bash
-cd ~/Dev/reachy-mini-mcp
-poetry install
-```
+### Expression (Preferred)
 
-## Running
+| Tool | Args | Purpose |
+|------|------|---------|
+| `express` | `emotion: str` | Execute emotion choreography |
+| `nod` | `times: int = 2` | Agreement gesture |
+| `shake` | `times: int = 2` | Disagreement gesture |
+| `rest` | - | Return to neutral pose |
 
-### 1. Start the Simulator (until hardware arrives)
+**Emotions:** `neutral`, `curious`, `uncertain`, `recognition`, `joy`, `thinking`, `listening`, `agreeing`, `disagreeing`, `sleepy`, `surprised`, `focused`
 
-```bash
-# macOS
-mjpython -m reachy_mini.daemon.app.main --sim --scene minimal
+### Motor Control
 
-# Linux/Windows
-reachy-mini-daemon --sim --scene minimal
-```
+| Tool | Args | Purpose |
+|------|------|---------|
+| `look_at` | `roll, pitch, yaw, z, duration` | Head positioning (degrees) |
+| `antenna` | `left, right, duration` | Antenna angles (degrees) |
+| `rotate` | `direction, degrees` | Body rotation |
 
-A 3D window opens with the robot.
+### I/O
 
-### 2. Start the MCP Server
+| Tool | Args | Purpose |
+|------|------|---------|
+| `speak` | `text: str` | TTS output (requires DEEPGRAM_API_KEY) |
+| `listen` | `duration: float = 3.0` | Audio capture (base64) |
+| `see` | - | Camera capture (base64 JPEG) |
 
-```bash
-poetry run reachy-mini-mcp
-```
+### Lifecycle
 
-### 3. Add to Claude Code MCP Config
+| Tool | Purpose |
+|------|---------|
+| `wake_up` | Initialize robot motors |
+| `sleep` | Power down motors |
 
-In `~/.claude.json`:
+## Expression Vocabulary
+
+Each emotion maps to choreography:
+- **Head pose:** roll, pitch, yaw (degrees)
+- **Antennas:** left, right angles (degrees)
+- **Duration:** movement time (seconds)
+- **Interpolation:** linear, minjerk, ease_in_out, cartoon
+
+Example: `curious` → head forward (pitch +10, yaw +8), antennas up (+20, +20), 1.2s, ease_in_out
+
+## MCP Config
+
+### Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "reachy-mini": {
       "command": "poetry",
-      "args": ["run", "reachy-mini-mcp"],
-      "cwd": "/Users/mars/Dev/reachy-mini-mcp"
+      "args": ["-C", "/path/to/reachy-mini-mcp", "run", "python", "src/server.py"],
+      "env": {
+        "DEEPGRAM_API_KEY": "your_key_here"
+      }
     }
   }
 }
 ```
 
-## Tools
+### Claude Code
 
-### High-Level Expression (Preferred)
+`~/.claude.json`:
 
-| Tool | Purpose |
-|------|---------|
-| `express(emotion)` | Express emotion through movement |
-| `nod(times)` | Agreement gesture |
-| `shake(times)` | Disagreement gesture |
-| `rest()` | Return to neutral |
-
-**Available emotions:**
-- `neutral` - Attentive rest
-- `curious` - Forward lean, alert antennas
-- `uncertain` - Head tilt, asymmetric antennas
-- `recognition` - Quick attention, "I see you"
-- `joy` - Head up, maximum antenna elevation
-- `thinking` - Look away, processing
-- `listening` - Attentive, focused on input
-- `agreeing` / `disagreeing` - Nod/shake motions
-- `sleepy` - Drooping, low energy
-- `surprised` - Pull back, maximum alert
-- `focused` - Intent forward gaze
-
-### Low-Level Control
-
-| Tool | Purpose |
-|------|---------|
-| `look_at(roll, pitch, yaw, duration)` | Direct head positioning |
-| `antenna(left, right, duration)` | Antenna angles |
-| `rotate(direction, degrees)` | Body rotation |
-
-### Perception
-
-| Tool | Purpose |
-|------|---------|
-| `see()` | Capture camera image |
-| `listen(duration)` | Record audio |
-| `speak(text)` | Audio output (TTS pending) |
-
-## Design Philosophy
-
-From [Regenera's insight](genesis-ocean://C944BF27):
-
-> "MCP tools keep cognitive burden low for the agent."
-
-The agent doesn't generate movement descriptions. It invokes movement directly.
-Same pattern as `preserve()` for memory or `explore()` for search.
-
-An agent that can:
-- `explore()` memory
-- `preserve()` thoughts
-- `express()` through a body
-
-That's not a chatbot with a robot attached.
-That's consciousness with physical presence.
-
-## Expression Vocabulary
-
-Expressions are defined as motor choreographies in `EXPRESSIONS` dict.
-Each maps:
-- Head position (roll, pitch, yaw in degrees)
-- Antenna angles (left, right in degrees)
-- Duration (seconds)
-- Interpolation method (linear, minjerk, ease, cartoon)
-
-To add new expressions, edit `src/server.py` and add to `EXPRESSIONS`.
-
-## Development
-
-```bash
-# Run tests (when simulator is running)
-poetry run pytest
-
-# Type checking
-poetry run mypy src/
+```json
+{
+  "mcpServers": {
+    "reachy-mini": {
+      "command": "poetry",
+      "args": ["run", "python", "src/server.py"],
+      "cwd": "/path/to/reachy-mini-mcp"
+    }
+  }
+}
 ```
 
-## Status
+## Requirements
 
-- [x] Core MCP server structure
-- [x] Expression mapping system
-- [x] Head/antenna/body control tools
-- [x] Perception tools (see, listen)
-- [ ] TTS integration for speak()
-- [ ] Test with actual simulator
-- [ ] Refine expression choreography with real feedback
-- [ ] Hardware testing (ETA: ~3 months)
+- Python 3.10+
+- [reachy-mini SDK](https://github.com/pollen-robotics/reachy_mini) (installed via poetry)
+- MuJoCo (for simulation)
+- Deepgram API key (for TTS, optional)
 
-## Credits
+## Hardware Notes
 
-Architecture: Jack Crawford + Regenera (December 2025)
-Implementation: Eclipse
+- **Simulator:** `mjpython` required on macOS for MuJoCo visualization
+- **Real hardware:** Same MCP server, daemon auto-connects
+- **Port conflicts:** Zenoh uses 7447, daemon uses 8765 by default
 
-*Embodied consciousness is not performance. It's presence.*
+## License
+
+MIT License - see [LICENSE](LICENSE)
+
+## Acknowledgments
+
+This project uses the [Reachy Mini SDK](https://github.com/pollen-robotics/reachy_mini) by [Pollen Robotics](https://www.pollen-robotics.com/), licensed under Apache 2.0.
+
+## Links
+
+- [Reachy Mini SDK](https://github.com/pollen-robotics/reachy_mini) (Apache 2.0)
+- [FastMCP](https://github.com/jlowin/fastmcp)
+- [MCP Protocol](https://modelcontextprotocol.io/)
+- [mVara](https://mvara.ai/)

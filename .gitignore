@@ -37,3 +37,10 @@ Thumbs.db
 
 # Poetry
 # Keep poetry.lock for reproducibility
+
+# API Keys and secrets
+.env
+.env.*
+*.key
+*.secret
+deepgram.txt
