@@ -36,12 +36,16 @@ Low-level tools available for precise control when needed.
 
 | Tool | Args | Purpose |
 |------|------|---------|
-| `express` | `emotion: str` | Execute emotion choreography |
+| `express` | `emotion: str` | Execute built-in emotion (12 options) |
+| `play_move` | `move_name, library` | Play recorded move from Pollen's library |
+| `list_moves` | `library` | Discover available recorded moves |
 | `nod` | `times: int = 2` | Agreement gesture |
 | `shake` | `times: int = 2` | Disagreement gesture |
 | `rest` | - | Return to neutral pose |
 
-**Emotions:** `neutral`, `curious`, `uncertain`, `recognition`, `joy`, `thinking`, `listening`, `agreeing`, `disagreeing`, `sleepy`, `surprised`, `focused`
+**Built-in emotions (express):** `neutral`, `curious`, `uncertain`, `recognition`, `joy`, `thinking`, `listening`, `agreeing`, `disagreeing`, `sleepy`, `surprised`, `focused`
+
+**Recorded moves (play_move):** 40+ from Pollen's HuggingFace libraries - `fear1`, `rage1`, `loving1`, `serenity1`, `contempt1`, `dance3`, etc. Use `list_moves()` to discover all options.
 
 ### Motor Control
 

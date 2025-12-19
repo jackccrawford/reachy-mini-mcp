@@ -9,7 +9,9 @@ Architecture:
 High-level tools abstract motor control into semantic actions.
 
 Tools:
-  - express(emotion)      High-level emotional expression
+  - express(emotion)      High-level emotional expression (12 built-in)
+  - play_move(name)       Pollen's recorded moves (40+ emotions, dances)
+  - list_moves()          Discover available recorded moves
   - look_at(angles)       Direct head positioning
   - antenna(angles)       Antenna control
   - rotate(direction)     Body rotation
@@ -33,12 +35,14 @@ mcp = FastMCP(
     Reachy Mini robot control for expressive robotics.
 
     Use these tools for robot control:
-    - express() for high-level emotions (curious, uncertain, recognition, joy, etc.)
+    - express() for 12 built-in emotions (curious, joy, thinking, etc.)
+    - play_move() for 40+ recorded emotions from Pollen (fear1, rage1, serenity1, etc.)
+    - list_moves() to discover available recorded moves
     - look_at() for precise head positioning
     - speak() to vocalize
     - see() to capture camera images
 
-    Prefer express() over low-level commands when possible.
+    Prefer express() for common emotions, play_move() for nuanced expressions.
     """
 )
 
@@ -573,6 +577,95 @@ def sleep() -> str:
         return "Robot sleeping"
     except Exception as e:
         return f"Sleep failed: {e}"
+
+
+# ==============================================================================
+# RECORDED MOVES (Pollen's emotion/dance libraries)
+# ==============================================================================
+
+DAEMON_URL = "http://localhost:8321"
+
+MOVE_LIBRARIES = {
+    "emotions": "pollen-robotics/reachy-mini-emotions-library",
+    "dances": "pollen-robotics/reachy-mini-dances-library",
+}
+
+
+@mcp.tool()
+def list_moves(library: Literal["emotions", "dances"] = "emotions") -> str:
+    """
+    List available recorded moves from Pollen's HuggingFace libraries.
+
+    Returns move names that can be passed to play_move().
+    Moves are professionally choreographed by Pollen Robotics.
+
+    Args:
+        library: Which library to list - "emotions" (40+ expressions) or "dances"
+
+    Returns:
+        List of available move names
+    """
+    import httpx
+
+    dataset = MOVE_LIBRARIES.get(library)
+    if not dataset:
+        return f"Unknown library: {library}. Available: {list(MOVE_LIBRARIES.keys())}"
+
+    try:
+        response = httpx.get(
+            f"{DAEMON_URL}/move/recorded-move-datasets/list/{dataset}",
+            timeout=10.0
+        )
+        response.raise_for_status()
+        moves = response.json()
+        return f"Available {library} ({len(moves)}): {', '.join(sorted(moves))}"
+    except httpx.ConnectError:
+        return "Cannot connect to daemon. Is it running on localhost:8321?"
+    except Exception as e:
+        return f"Failed to list moves: {e}"
+
+
+@mcp.tool()
+def play_move(
+    move_name: str,
+    library: Literal["emotions", "dances"] = "emotions"
+) -> str:
+    """
+    Play a recorded move from Pollen's libraries.
+
+    Use list_moves() first to see available options.
+    These are professionally choreographed expressions with
+    nuanced head, antenna, and body movements.
+
+    Examples: fear1, loving1, dance3, rage1, serenity1, proud3
+
+    Args:
+        move_name: Name of the move (e.g., "fear1", "dance3")
+        library: Which library - "emotions" or "dances"
+
+    Returns:
+        Confirmation or error
+    """
+    import httpx
+
+    dataset = MOVE_LIBRARIES.get(library)
+    if not dataset:
+        return f"Unknown library: {library}. Available: {list(MOVE_LIBRARIES.keys())}"
+
+    try:
+        response = httpx.post(
+            f"{DAEMON_URL}/move/play/recorded-move-dataset/{dataset}/{move_name}",
+            timeout=30.0
+        )
+        if response.status_code == 404:
+            return f"Move '{move_name}' not found in {library}. Use list_moves() to see available options."
+        response.raise_for_status()
+        result = response.json()
+        return f"Playing: {move_name} (uuid: {result.get('uuid', 'unknown')})"
+    except httpx.ConnectError:
+        return "Cannot connect to daemon. Is it running on localhost:8321?"
+    except Exception as e:
+        return f"Failed to play move: {e}"
 
 
 # ==============================================================================
