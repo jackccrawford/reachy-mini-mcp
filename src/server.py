@@ -583,7 +583,7 @@ def sleep() -> str:
 # RECORDED MOVES (Pollen's emotion/dance libraries)
 # ==============================================================================
 
-DAEMON_URL = "http://localhost:8321"
+DAEMON_URL = "http://localhost:8321/api"
 
 MOVE_LIBRARIES = {
     "emotions": "pollen-robotics/reachy-mini-emotions-library",
