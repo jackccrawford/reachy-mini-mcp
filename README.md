@@ -109,12 +109,16 @@ Example: `curious` → head forward (pitch +10, yaw +8), antennas up (+20, +20),
   "mcpServers": {
     "reachy-mini": {
       "command": "poetry",
-      "args": ["run", "python", "src/server.py"],
-      "cwd": "/path/to/reachy-mini-mcp"
+      "args": ["-C", "/path/to/reachy-mini-mcp", "run", "python", "src/server.py"],
+      "env": {
+        "DEEPGRAM_API_KEY": "your_key_here"
+      }
     }
   }
 }
 ```
+
+**Note:** The `env` block is required for `speak()` TTS. Get a free API key at [deepgram.com](https://deepgram.com).
 
 ## Requirements
 
