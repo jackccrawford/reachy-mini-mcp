@@ -438,6 +438,43 @@ def text_to_speech(text: str) -> str:
     return temp_file.name
 
 
+def speech_to_text(audio_data: bytes) -> str:
+    """
+    Convert audio to text using Deepgram STT (Nova-2).
+
+    Args:
+        audio_data: Raw audio bytes (WAV format expected from robot)
+
+    Returns:
+        Transcribed text
+    """
+    import httpx
+    import os
+
+    api_key = os.environ.get("DEEPGRAM_API_KEY")
+    if not api_key:
+        raise RuntimeError("DEEPGRAM_API_KEY environment variable not set")
+
+    # Deepgram pre-recorded transcription endpoint
+    url = "https://api.deepgram.com/v1/listen?model=nova-2&punctuate=true&smart_format=true"
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "Content-Type": "audio/wav"
+    }
+
+    response = httpx.post(url, headers=headers, content=audio_data, timeout=30.0)
+    response.raise_for_status()
+
+    result = response.json()
+
+    # Extract transcript from Deepgram response
+    try:
+        transcript = result["results"]["channels"][0]["alternatives"][0]["transcript"]
+        return transcript if transcript else ""
+    except (KeyError, IndexError):
+        return ""
+
+
 def _parse_choreographed_text(text: str) -> list[dict]:
     """
     Parse text with embedded move markers.
@@ -546,16 +583,16 @@ def speak(text: str) -> str:
 @mcp.tool()
 def listen(duration: float = 3.0) -> str:
     """
-    Listen through the robot's microphones.
+    Listen through the robot's microphones and transcribe.
 
-    Captures audio for the specified duration.
-    Returns base64-encoded audio data.
+    Captures audio for the specified duration and converts to text
+    using Deepgram Nova-2 speech-to-text.
 
     Args:
         duration: How long to listen in seconds (1-30)
 
     Returns:
-        Base64-encoded audio sample
+        Transcribed text of what was heard
     """
     duration = max(1, min(30, duration))
     robot = get_robot()
@@ -563,9 +600,14 @@ def listen(duration: float = 3.0) -> str:
     try:
         audio_data = robot.media.get_audio_sample(duration=duration)
 
-        if audio_data is not None:
-            encoded = base64.b64encode(audio_data).decode('utf-8')
-            return f"Audio captured ({duration}s): {encoded[:100]}..."
+        if audio_data is not None and len(audio_data) > 0:
+            # Transcribe via Deepgram STT
+            transcript = speech_to_text(audio_data)
+
+            if transcript:
+                return f"Heard: {transcript}"
+            else:
+                return "Heard: (silence or unclear audio)"
         else:
             return "No audio captured"
 
