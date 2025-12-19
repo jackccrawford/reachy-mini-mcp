@@ -150,7 +150,8 @@ MIT License - see [LICENSE](LICENSE)
 
 ## Acknowledgments
 
-This project uses the [Reachy Mini SDK](https://github.com/pollen-robotics/reachy_mini) by [Pollen Robotics](https://www.pollen-robotics.com/), licensed under Apache 2.0.
+- [Reachy Mini SDK](https://github.com/pollen-robotics/reachy_mini) by [Pollen Robotics](https://www.pollen-robotics.com/) (Apache 2.0)
+- Grok Voice integration pattern from [dillera's reachy_mini_conversation_app](https://huggingface.co/spaces/dillera/reachy_mini_conversation_app)
 
 ## Links
 

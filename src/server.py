@@ -373,86 +373,78 @@ def deepgram_text_to_speech(text: str) -> str:
 
 def grok_text_to_speech(text: str, api_key: str) -> str:
     """
-    Convert text to speech using Grok Voice Agent API (WebSocket).
+    Convert text to speech using Grok Voice via OpenAI SDK.
 
-    Uses the OpenAI Realtime-compatible protocol to get TTS from Grok.
-    Available voices: Ara, Eve, Leo, Rex, Sal, Mika, Valentin
+    Uses the OpenAI-compatible Realtime API with Grok's base URL.
+    Available voices: Ara, Eve, Leo, Rex, Sal
+
+    Based on dillera's reachy_mini_conversation_app (HuggingFace).
     """
     import tempfile
-    import json
     import asyncio
-    from websockets.sync.client import connect
 
-    voice = os.environ.get("GROK_VOICE", "Eve")
-    ws_url = "wss://api.x.ai/v1/realtime"
+    voice = os.environ.get("GROK_VOICE", "Eve").lower()
 
-    audio_chunks = []
+    async def _get_audio():
+        from openai import AsyncOpenAI
 
-    with connect(
-        ws_url,
-        additional_headers={"Authorization": f"Bearer {api_key}"}
-    ) as ws:
-        # Configure session
-        ws.send(json.dumps({
-            "type": "session.update",
-            "session": {
-                "voice": voice,
-                "modalities": ["audio", "text"],
-                "instructions": "You are a text-to-speech system. Repeat exactly what the user says, nothing more.",
-                "turn_detection": None  # Disable VAD - we're doing one-shot TTS
-            }
-        }))
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.x.ai/v1"
+        )
 
-        # Send text to speak
-        ws.send(json.dumps({
-            "type": "conversation.item.create",
-            "item": {
-                "type": "message",
-                "role": "user",
-                "content": [{"type": "input_text", "text": f"Say exactly: {text}"}]
-            }
-        }))
+        audio_chunks = []
 
-        # Request response
-        ws.send(json.dumps({"type": "response.create"}))
+        async with client.realtime.connect(model="grok-beta") as conn:
+            # Configure session for TTS
+            await conn.session.update(
+                session={
+                    "modalities": ["audio", "text"],
+                    "voice": voice,
+                    "instructions": "Repeat exactly what the user says. Nothing more.",
+                    "turn_detection": None,
+                }
+            )
 
-        # Collect audio chunks
-        while True:
-            try:
-                msg = json.loads(ws.recv(timeout=10))
+            # Send text to speak
+            await conn.conversation.item.create(
+                item={
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": f"Say exactly: {text}"}]
+                }
+            )
 
-                if msg["type"] == "response.output_audio.delta":
-                    # Audio chunk (base64 PCM)
-                    audio_chunks.append(msg["delta"])
+            # Request response (no tools)
+            await conn.response.create(response={"tool_choice": "none"})
 
-                elif msg["type"] == "response.output_audio.done":
-                    # Audio complete
+            # Collect audio chunks
+            async for event in conn:
+                if event.type == "response.output_audio.delta":
+                    audio_chunks.append(event.delta)
+                elif event.type in ("response.output_audio.done", "response.done"):
                     break
+                elif event.type == "error":
+                    raise RuntimeError(f"Grok error: {event}")
 
-                elif msg["type"] == "response.done":
-                    # Response complete
-                    break
+        return audio_chunks
 
-                elif msg["type"] == "error":
-                    raise RuntimeError(f"Grok error: {msg.get('error', msg)}")
-
-            except TimeoutError:
-                break
+    # Run async function
+    audio_chunks = asyncio.run(_get_audio())
 
     if not audio_chunks:
         raise RuntimeError("No audio received from Grok")
 
     # Decode base64 audio chunks and combine
-    import base64
     pcm_data = b"".join(base64.b64decode(chunk) for chunk in audio_chunks)
 
-    # Convert PCM to WAV (Grok outputs 24kHz 16-bit mono PCM)
+    # Convert PCM to WAV (24kHz 16-bit mono)
     import wave
     temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     with wave.open(temp_file.name, 'wb') as wav:
         wav.setnchannels(1)
-        wav.setsampwidth(2)  # 16-bit
-        wav.setframerate(24000)  # Grok uses 24kHz
+        wav.setsampwidth(2)
+        wav.setframerate(24000)
         wav.writeframes(pcm_data)
 
     return temp_file.name
