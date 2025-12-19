@@ -438,36 +438,98 @@ def text_to_speech(text: str) -> str:
     return temp_file.name
 
 
+def _parse_choreographed_text(text: str) -> list[dict]:
+    """
+    Parse text with embedded move markers.
+
+    Syntax: "Hello [move:enthusiastic1] world [move:grateful1]"
+
+    Returns list of segments:
+        [{"type": "text", "content": "Hello "},
+         {"type": "move", "name": "enthusiastic1"},
+         {"type": "text", "content": " world "},
+         {"type": "move", "name": "grateful1"}]
+    """
+    import re
+    segments = []
+    pattern = r'\[move:([^\]]+)\]'
+    last_end = 0
+
+    for match in re.finditer(pattern, text):
+        # Text before the marker
+        if match.start() > last_end:
+            segments.append({"type": "text", "content": text[last_end:match.start()]})
+        # The move marker
+        segments.append({"type": "move", "name": match.group(1)})
+        last_end = match.end()
+
+    # Remaining text after last marker
+    if last_end < len(text):
+        segments.append({"type": "text", "content": text[last_end:]})
+
+    return segments
+
+
 @mcp.tool()
 def speak(text: str) -> str:
     """
     Speak through the robot's speaker.
 
-    Uses text-to-speech to vocalize. For pre-recorded audio,
-    provide a file path instead of text.
+    Uses text-to-speech to vocalize. Supports embedded move markers
+    for choreographed performances where speech and motion happen together.
+
+    Syntax for embedded moves:
+        "This is amazing [move:enthusiastic1] Jack, wonderful idea [move:grateful1]"
+
+    Moves play concurrently with speech (non-blocking).
+    Use list_moves() to see available move names.
 
     Args:
-        text: What to say (or path to audio file)
+        text: What to say, optionally with [move:name] markers
 
     Returns:
         Confirmation
     """
+    import os
+    import re
     robot = get_robot()
 
     try:
-        # Check if it's a file path
+        # Check if it's a file path (no choreography support for raw audio)
         if text.endswith(('.wav', '.mp3', '.ogg')):
             robot.media.play_sound(text)
             return f"Played audio: {text}"
+
+        # Check for embedded moves
+        if '[move:' in text:
+            segments = _parse_choreographed_text(text)
+            moves_triggered = []
+            speech_parts = []
+
+            for segment in segments:
+                if segment["type"] == "move":
+                    # Fire move immediately (non-blocking on daemon side)
+                    result = _do_play_move(segment["name"])
+                    moves_triggered.append(segment["name"])
+                elif segment["type"] == "text":
+                    content = segment["content"].strip()
+                    if content:
+                        speech_parts.append(content)
+
+            # Combine speech parts and speak
+            full_speech = " ".join(speech_parts)
+            if full_speech:
+                audio_path = text_to_speech(full_speech)
+                robot.media.play_sound(audio_path)
+                os.unlink(audio_path)
+
+            return f"Performed: '{full_speech}' with moves: {moves_triggered}"
+
         else:
-            # Convert text to speech via Deepgram
+            # Simple speech - no choreography
             audio_path = text_to_speech(text)
             robot.media.play_sound(audio_path)
-
-            # Clean up temp file
-            import os
             os.unlink(audio_path)
-
             return f"Spoke: {text}"
 
     except Exception as e:
@@ -630,6 +692,30 @@ def list_moves(library: Literal["emotions", "dances"] = "emotions") -> str:
         return f"Failed to list moves: {e}"
 
 
+def _do_play_move(move_name: str, library: str = "emotions") -> str:
+    """Internal helper - play a recorded move."""
+    import httpx
+
+    dataset = MOVE_LIBRARIES.get(library)
+    if not dataset:
+        return f"Unknown library: {library}. Available: {list(MOVE_LIBRARIES.keys())}"
+
+    try:
+        response = httpx.post(
+            f"{DAEMON_URL}/move/play/recorded-move-dataset/{dataset}/{move_name}",
+            timeout=30.0
+        )
+        if response.status_code == 404:
+            return f"Move '{move_name}' not found in {library}. Use list_moves() to see available options."
+        response.raise_for_status()
+        result = response.json()
+        return f"Playing: {move_name} (uuid: {result.get('uuid', 'unknown')})"
+    except httpx.ConnectError:
+        return "Cannot connect to daemon. Is it running on localhost:8321?"
+    except Exception as e:
+        return f"Failed to play move: {e}"
+
+
 @mcp.tool()
 def play_move(
     move_name: str,
@@ -651,26 +737,7 @@ def play_move(
     Returns:
         Confirmation or error
     """
-    import httpx
-
-    dataset = MOVE_LIBRARIES.get(library)
-    if not dataset:
-        return f"Unknown library: {library}. Available: {list(MOVE_LIBRARIES.keys())}"
-
-    try:
-        response = httpx.post(
-            f"{DAEMON_URL}/move/play/recorded-move-dataset/{dataset}/{move_name}",
-            timeout=30.0
-        )
-        if response.status_code == 404:
-            return f"Move '{move_name}' not found in {library}. Use list_moves() to see available options."
-        response.raise_for_status()
-        result = response.json()
-        return f"Playing: {move_name} (uuid: {result.get('uuid', 'unknown')})"
-    except httpx.ConnectError:
-        return "Cannot connect to daemon. Is it running on localhost:8321?"
-    except Exception as e:
-        return f"Failed to play move: {e}"
+    return _do_play_move(move_name, library)
 
 
 # ==============================================================================
