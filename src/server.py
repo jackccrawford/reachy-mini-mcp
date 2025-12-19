@@ -143,9 +143,9 @@ def get_robot():
     if _robot_instance is None:
         try:
             from reachy_mini import ReachyMini
-            # Use default_no_video for simulation (keeps audio, skips camera)
-            # Use 'no_media' for fully headless, 'default' for real hardware
-            _robot_instance = ReachyMini(media_backend='default_no_video')
+            # Use 'default' for full media (audio + camera)
+            # Use 'default_no_video' for audio only, 'no_media' for headless
+            _robot_instance = ReachyMini(media_backend='default')
             _robot_instance.__enter__()
         except ImportError:
             raise RuntimeError(
@@ -239,6 +239,17 @@ def _do_express(emotion: str) -> str:
 
     except Exception as e:
         return f"Expression failed: {e}"
+
+
+def _do_move(name: str) -> str:
+    """
+    Execute a move by name - tries built-in emotions first, then Pollen library.
+
+    Built-in emotions are silent (motor-only), Pollen moves may have audio.
+    """
+    if name in EXPRESSIONS:
+        return _do_express(name)
+    return _do_play_move(name)
 
 
 @mcp.tool()
@@ -562,7 +573,7 @@ def speak(text: str, listen_after: float = 0) -> str:
                     if content:
                         # Fire pending move right before this speech chunk
                         if pending_move:
-                            _do_play_move(pending_move)
+                            _do_move(pending_move)
                             moves_triggered.append(pending_move)
                             pending_move = None
 
@@ -576,7 +587,7 @@ def speak(text: str, listen_after: float = 0) -> str:
 
             # Fire any trailing move (if text ends with a move marker)
             if pending_move:
-                _do_play_move(pending_move)
+                _do_move(pending_move)
                 moves_triggered.append(pending_move)
 
             result_parts.append(f"Performed: '{' '.join(speech_parts)}' with moves: {moves_triggered}")
