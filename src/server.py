@@ -4,21 +4,16 @@ Reachy Mini MCP Server
 MCP tools for controlling Pollen Robotics Reachy Mini robot.
 
 Architecture:
-  MCP Tool Call → SDK → Robot Movement
+  MCP Tool Call → SDK → Daemon → Robot/Simulator
 
-High-level tools abstract motor control into semantic actions.
-
-Tools:
-  - express(emotion)      High-level emotional expression (12 built-in)
-  - play_move(name)       Pollen's recorded moves (40+ emotions, dances)
-  - list_moves()          Discover available recorded moves
-  - look_at(angles)       Direct head positioning
-  - antenna(angles)       Antenna control
-  - rotate(direction)     Body rotation
-  - speak(text/file)      Audio output (TTS via Deepgram)
-  - listen(duration)      Audio capture
-  - see()                 Camera capture
-  - rest()                Return to neutral pose
+7 tools (Miller's Law):
+  - speak(text, listen_after)  Voice + gesture + optionally hear response
+  - listen(duration)           STT via Deepgram Nova-2
+  - snap()                     Camera capture (base64 JPEG)
+  - show(emotion, move)        Express emotion or play recorded move
+  - look(roll, pitch, yaw, z)  Head positioning
+  - rest(mode)                 neutral / sleep / wake
+  - discover(library)          Find available recorded moves
 """
 
 import math
@@ -35,14 +30,16 @@ mcp = FastMCP(
     Reachy Mini robot control for expressive robotics.
 
     Use these tools for robot control:
-    - express() for 12 built-in emotions (curious, joy, thinking, etc.)
-    - play_move() for 40+ recorded emotions from Pollen (fear1, rage1, serenity1, etc.)
-    - list_moves() to discover available recorded moves
-    - look_at() for precise head positioning
-    - speak() to vocalize
-    - see() to capture camera images
+    - show() for 12 built-in emotions (curious, joy, thinking, etc.)
+    - show(move=...) for 81 recorded emotions from Pollen (fear1, rage1, serenity1, etc.)
+    - discover() to see available recorded moves
+    - look() for precise head positioning
+    - speak() to vocalize with [move:X] markers for choreography
+    - listen() to hear and transcribe speech
+    - snap() to capture camera images
+    - rest() for neutral pose, sleep, or wake
 
-    Prefer express() for common emotions, play_move() for nuanced expressions.
+    Prefer show() for common emotions, show(move=...) for nuanced expressions.
     """
 )
 
@@ -666,7 +663,7 @@ def discover(library: Literal["emotions", "dances"] = "emotions") -> str:
     """
     Discover available moves from Pollen's HuggingFace libraries.
 
-    Returns move names that can be passed to express(move=...).
+    Returns move names that can be passed to show(move=...).
     Moves are professionally choreographed by Pollen Robotics.
 
     Args:
@@ -709,7 +706,7 @@ def _do_play_move(move_name: str, library: str = "emotions") -> str:
             timeout=30.0
         )
         if response.status_code == 404:
-            return f"Move '{move_name}' not found in {library}. Use list_moves() to see available options."
+            return f"Move '{move_name}' not found in {library}. Use discover() to see available options."
         response.raise_for_status()
         result = response.json()
         return f"Playing: {move_name} (uuid: {result.get('uuid', 'unknown')})"
