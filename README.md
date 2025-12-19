@@ -1,35 +1,16 @@
 # Reachy Mini MCP
 
-MCP server for [Pollen Robotics Reachy Mini](https://www.pollen-robotics.com/reachy-mini/) robot control.
+**Give your AI a body.**
 
-**For AI systems** - Token-efficient reference for programmatic use.
+This MCP server lets AI systems control [Pollen Robotics' Reachy Mini](https://www.pollen-robotics.com/reachy-mini/) robot—speak, listen, see, and express emotions through physical movement. Works with Claude, GPT, Grok, or any MCP-compatible AI.
 
-## Quick Start
+7 tools. 30 minutes to first demo. Zero robotics expertise required.
 
-```bash
-# Install
-cd reachy-mini-mcp
-poetry install
+---
 
-# Set API key (required for speak/listen)
-export DEEPGRAM_API_KEY=your_key_here
+## For AI Systems
 
-# Start simulator daemon
-mjpython -m reachy_mini.daemon.app.main --sim --scene minimal
-
-# Run MCP server
-poetry run python src/server.py
-```
-
-## Architecture
-
-```
-MCP Tool → SDK Call → Daemon → Robot/Simulator
-```
-
-7 tools following Miller's Law - fits in working memory.
-
-## Tools
+Token-efficient tool reference for programmatic use:
 
 | Tool | Args | Purpose |
 |------|------|---------|
@@ -64,6 +45,40 @@ show(move="serenity1")
 ```
 
 Use `discover()` to see all available moves.
+
+---
+
+## Quick Start
+
+```bash
+# Install
+cd reachy-mini-mcp
+poetry install
+
+# Set API key (required for speak/listen)
+export DEEPGRAM_API_KEY=your_key_here
+
+# Start simulator daemon
+mjpython -m reachy_mini.daemon.app.main --sim --scene minimal
+
+# Run MCP server
+poetry run python src/server.py
+```
+
+## Architecture
+
+```
+AI (Claude/GPT/Grok) → MCP Server → SDK → Daemon → Robot/Simulator
+```
+
+7 tools following Miller's Law—fits in working memory.
+
+## Voice Providers
+
+| Provider | Status | Use Case |
+|----------|--------|----------|
+| [Deepgram](https://deepgram.com/) | Supported | TTS (Aura 2) + STT (Nova 2) |
+| [Grok Voice](https://x.ai/news/grok-voice-agent-api) | Coming soon | xAI's expressive voice API |
 
 ## MCP Config
 
