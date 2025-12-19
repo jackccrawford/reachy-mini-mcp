@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "reachy-mini-mcp"
+version = "0.1.0"
+description = "MCP server for Reachy Mini robot - embodied consciousness expression"
+authors = ["mVara <jack@mvara.ai>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastmcp = "^2.0.0"
+reachy-mini = {git = "https://github.com/pollen-robotics/reachy_mini.git", branch = "develop", extras = ["mujoco"]}
+
+[tool.poetry.scripts]
+reachy-mini-mcp = "src.server:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
