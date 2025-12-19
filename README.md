@@ -103,6 +103,13 @@ Use `discover()` to see all available moves.
 }
 ```
 
+## Environment Variables
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `DEEPGRAM_API_KEY` | Yes | - | TTS and STT via Deepgram |
+| `REACHY_DAEMON_URL` | No | `http://localhost:8321/api` | Daemon API endpoint |
+
 ## Requirements
 
 - Python 3.10+

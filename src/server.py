@@ -18,6 +18,7 @@ Architecture:
 
 import math
 import base64
+import os
 from typing import Optional, Literal
 
 import numpy as np
@@ -172,10 +173,6 @@ def cleanup_robot():
 # HELPER FUNCTIONS
 # ==============================================================================
 
-def degrees_to_radians(degrees: float) -> float:
-    """Convert degrees to radians for SDK calls."""
-    return degrees * (math.pi / 180.0)
-
 
 def create_head_pose_array(z: float = 0, roll: float = 0, pitch: float = 0, yaw: float = 0):
     """
@@ -224,7 +221,7 @@ def _do_express(emotion: str) -> str:
         antennas = expr["antennas"]
 
         # Convert antenna degrees to radians
-        antenna_radians = [degrees_to_radians(a) for a in antennas]
+        antenna_radians = [math.radians(a) for a in antennas]
 
         robot.goto_target(
             head=create_head_pose_array(
@@ -332,7 +329,6 @@ def text_to_speech(text: str) -> str:
     """
     import tempfile
     import httpx
-    import os
 
     api_key = os.environ.get("DEEPGRAM_API_KEY")
     if not api_key:
@@ -367,7 +363,6 @@ def speech_to_text(audio_data: bytes) -> str:
         Transcribed text
     """
     import httpx
-    import os
 
     api_key = os.environ.get("DEEPGRAM_API_KEY")
     if not api_key:
@@ -446,7 +441,6 @@ def speak(text: str, listen_after: float = 0) -> str:
     Returns:
         Confirmation, plus transcription if listen_after > 0
     """
-    import os
     robot = get_robot()
 
     result_parts = []
@@ -477,10 +471,12 @@ def speak(text: str, listen_after: float = 0) -> str:
                             moves_triggered.append(pending_move)
                             pending_move = None
 
-                        # Speak this chunk
+                        # Speak this chunk with proper temp file cleanup
                         audio_path = text_to_speech(content)
-                        robot.media.play_sound(audio_path)
-                        os.unlink(audio_path)
+                        try:
+                            robot.media.play_sound(audio_path)
+                        finally:
+                            os.unlink(audio_path)
                         speech_parts.append(content)
 
             # Fire any trailing move (if text ends with a move marker)
@@ -493,8 +489,10 @@ def speak(text: str, listen_after: float = 0) -> str:
         else:
             # Simple speech - no choreography
             audio_path = text_to_speech(text)
-            robot.media.play_sound(audio_path)
-            os.unlink(audio_path)
+            try:
+                robot.media.play_sound(audio_path)
+            finally:
+                os.unlink(audio_path)
             result_parts.append(f"Spoke: {text}")
 
         # Listen after speaking if requested
@@ -521,17 +519,13 @@ def _do_listen(duration: float) -> str:
     duration = max(1, min(30, duration))
     robot = get_robot()
 
-    # Start recording
+    # Record with proper cleanup
     robot.media.start_recording()
-
-    # Wait for the specified duration
-    time.sleep(duration)
-
-    # Get the recorded audio
-    audio_data = robot.media.get_audio_sample()
-
-    # Stop recording
-    robot.media.stop_recording()
+    try:
+        time.sleep(duration)
+        audio_data = robot.media.get_audio_sample()
+    finally:
+        robot.media.stop_recording()
 
     if audio_data is not None and len(audio_data) > 0:
         # Convert numpy array to WAV bytes for Deepgram
@@ -650,7 +644,7 @@ def rest(mode: Literal["neutral", "sleep", "wake"] = "neutral") -> str:
 # RECORDED MOVES (Pollen's emotion/dance libraries)
 # ==============================================================================
 
-DAEMON_URL = "http://localhost:8321/api"
+DAEMON_URL = os.environ.get("REACHY_DAEMON_URL", "http://localhost:8321/api")
 
 MOVE_LIBRARIES = {
     "emotions": "pollen-robotics/reachy-mini-emotions-library",
