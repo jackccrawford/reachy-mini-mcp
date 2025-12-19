@@ -333,14 +333,16 @@ def look(
         return f"Movement failed: {e}"
 
 
-def text_to_speech(text: str) -> str:
+GROK_VOICES = ["ara", "eve", "leo", "rex", "sal"]
+
+def text_to_speech(text: str, voice: Optional[str] = None) -> str:
     """
     Convert text to speech. Uses Grok Voice if available, falls back to Deepgram.
     Returns path to temporary audio file.
     """
     xai_key = os.environ.get("XAI_API_KEY")
     if xai_key:
-        return grok_text_to_speech(text, xai_key)
+        return grok_text_to_speech(text, xai_key, voice)
     return deepgram_text_to_speech(text)
 
 
@@ -371,19 +373,23 @@ def deepgram_text_to_speech(text: str) -> str:
     return temp_file.name
 
 
-def grok_text_to_speech(text: str, api_key: str) -> str:
+def grok_text_to_speech(text: str, api_key: str, voice: Optional[str] = None) -> str:
     """
     Convert text to speech using Grok Voice via OpenAI SDK.
 
     Uses the OpenAI-compatible Realtime API with Grok's base URL.
-    Available voices: Ara, Eve, Leo, Rex, Sal
+    Available voices: ara, eve, leo, rex, sal
 
     Based on dillera's reachy_mini_conversation_app (HuggingFace).
     """
     import tempfile
     import asyncio
 
-    voice = os.environ.get("GROK_VOICE", "Eve").lower()
+    # Voice priority: parameter > env var > default
+    if voice and voice.lower() in GROK_VOICES:
+        voice = voice.lower()
+    else:
+        voice = os.environ.get("GROK_VOICE", "eve").lower()
 
     async def _get_audio():
         from openai import AsyncOpenAI
@@ -397,10 +403,11 @@ def grok_text_to_speech(text: str, api_key: str) -> str:
 
         async with client.realtime.connect(model="grok-beta") as conn:
             # Configure session for TTS
+            # Grok uses top-level "voice", OpenAI uses "audio.output.voice"
             await conn.session.update(
                 session={
                     "modalities": ["audio", "text"],
-                    "voice": voice,
+                    "voice": voice,  # Grok's format
                     "instructions": "Repeat exactly what the user says. Nothing more.",
                     "turn_detection": None,
                 }
@@ -519,7 +526,11 @@ def _parse_choreographed_text(text: str) -> list[dict]:
 
 
 @mcp.tool()
-def speak(text: str, listen_after: float = 0) -> str:
+def speak(
+    text: str,
+    listen_after: float = 0,
+    voice: Literal["ara", "eve", "leo", "rex", "sal"] = "eve"
+) -> str:
     """
     Speak through the robot's speaker.
 
@@ -535,6 +546,7 @@ def speak(text: str, listen_after: float = 0) -> str:
     Args:
         text: What to say, optionally with [move:name] markers
         listen_after: Seconds to listen after speaking (0 = don't listen)
+        voice: Grok voice - ara (warm), eve (energetic), leo (authoritative), rex (confident), sal (neutral)
 
     Returns:
         Confirmation, plus transcription if listen_after > 0
@@ -570,7 +582,7 @@ def speak(text: str, listen_after: float = 0) -> str:
                             pending_move = None
 
                         # Speak this chunk with proper temp file cleanup
-                        audio_path = text_to_speech(content)
+                        audio_path = text_to_speech(content, voice)
                         try:
                             robot.media.play_sound(audio_path)
                         finally:
@@ -586,7 +598,7 @@ def speak(text: str, listen_after: float = 0) -> str:
 
         else:
             # Simple speech - no choreography
-            audio_path = text_to_speech(text)
+            audio_path = text_to_speech(text, voice)
             try:
                 robot.media.play_sound(audio_path)
             finally:
