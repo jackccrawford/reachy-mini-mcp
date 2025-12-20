@@ -143,9 +143,11 @@ def get_robot():
     if _robot_instance is None:
         try:
             from reachy_mini import ReachyMini
-            # Use 'default' for full media (audio + camera)
-            # Use 'default_no_video' for audio only, 'no_media' for headless
-            _robot_instance = ReachyMini(media_backend='default')
+            # Use 'default' for full media (audio + camera) - requires real hardware
+            # Use 'default_no_video' for audio only (simulator compatible)
+            # Use 'no_media' for headless (no audio or camera)
+            backend = os.environ.get("REACHY_MEDIA_BACKEND", "default_no_video")
+            _robot_instance = ReachyMini(media_backend=backend)
             _robot_instance.__enter__()
         except ImportError:
             raise RuntimeError(
@@ -607,6 +609,12 @@ def speak(
 
         # Listen after speaking if requested
         if listen_after > 0:
+            import time
+            # Wait for audio playback to complete before listening
+            # This prevents the mic from picking up the robot's own voice
+            _wait_for_moves_complete(timeout=30.0)
+            time.sleep(0.5)  # Buffer for audio pipeline latency
+
             transcript = _do_listen(listen_after)
             if transcript:
                 result_parts.append(f"Heard: {transcript}")
@@ -755,6 +763,30 @@ def rest(mode: Literal["neutral", "sleep", "wake"] = "neutral") -> str:
 # ==============================================================================
 
 DAEMON_URL = os.environ.get("REACHY_DAEMON_URL", "http://localhost:8321/api")
+
+
+def _wait_for_moves_complete(timeout: float = 30.0, poll_interval: float = 0.1) -> bool:
+    """
+    Wait for all moves to complete by polling the daemon.
+
+    Returns True if moves completed, False if timeout.
+    """
+    import time
+    import httpx
+
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(f"{DAEMON_URL}/move/running", timeout=2.0)
+            if response.status_code == 200:
+                running = response.json()
+                if not running:  # Empty list = all moves done
+                    return True
+        except:
+            pass  # Connection error, keep polling
+        time.sleep(poll_interval)
+    return False
+
 
 MOVE_LIBRARIES = {
     "emotions": "pollen-robotics/reachy-mini-emotions-library",
