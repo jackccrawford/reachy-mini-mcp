@@ -14,7 +14,7 @@ Token-efficient tool reference for programmatic use:
 
 | Tool | Args | Purpose |
 |------|------|---------|
-| `speak` | `text, listen_after=0` | Voice + gesture, optionally listen after |
+| `speak` | `text, listen_after=0, voice="eve"` | Voice + gesture, optionally listen after |
 | `listen` | `duration=3` | STT via Deepgram Nova-2 |
 | `snap` | - | Camera capture (base64 JPEG) |
 | `show` | `emotion, move=""` | Express emotion or play recorded move |
@@ -30,7 +30,7 @@ Supports embedded move markers for choreographed speech:
 speak("[move:curious1] What's this? [move:surprised1] Oh wow!")
 ```
 
-Moves fire right before their speech chunk. Use `listen_after=5` to hear response.
+Moves complete (with sounds) before speech begins — no audio overlap. Use `listen_after=5` to hear response (waits for playback to finish before listening).
 
 ### show()
 
@@ -128,6 +128,7 @@ Grok Voice is used automatically when `XAI_API_KEY` is set. Falls back to Deepgr
 | `GROK_VOICE` | No | `Eve` | Grok voice: Ara, Eve, Leo, Rex, Sal, Mika, Valentin |
 | `DEEPGRAM_API_KEY` | Yes* | - | TTS (fallback) + STT |
 | `REACHY_DAEMON_URL` | No | `http://localhost:8321/api` | Daemon API endpoint |
+| `REACHY_MEDIA_BACKEND` | No | `default_no_video` | `default` (full media), `default_no_video` (audio only), `no_media` (headless) |
 
 *Required if `XAI_API_KEY` not set
 
