@@ -4,23 +4,21 @@ Reachy Mini MCP Server
 MCP tools for controlling Pollen Robotics Reachy Mini robot.
 
 Architecture:
-  MCP Tool Call → SDK → Robot Movement
+  MCP Tool Call → SDK → Daemon → Robot/Simulator
 
-High-level tools abstract motor control into semantic actions.
-
-Tools:
-  - express(emotion)      High-level emotional expression
-  - look_at(angles)       Direct head positioning
-  - antenna(angles)       Antenna control
-  - rotate(direction)     Body rotation
-  - speak(text/file)      Audio output (TTS via Deepgram)
-  - listen(duration)      Audio capture
-  - see()                 Camera capture
-  - rest()                Return to neutral pose
+7 tools (Miller's Law):
+  - speak(text, listen_after)  Voice + gesture + optionally hear response
+  - listen(duration)           STT via Deepgram Nova-2
+  - snap()                     Camera capture (base64 JPEG)
+  - show(emotion, move)        Express emotion or play recorded move
+  - look(roll, pitch, yaw, z)  Head positioning
+  - rest(mode)                 neutral / sleep / wake
+  - discover(library)          Find available recorded moves
 """
 
 import math
 import base64
+import os
 from typing import Optional, Literal
 
 import numpy as np
@@ -33,12 +31,16 @@ mcp = FastMCP(
     Reachy Mini robot control for expressive robotics.
 
     Use these tools for robot control:
-    - express() for high-level emotions (curious, uncertain, recognition, joy, etc.)
-    - look_at() for precise head positioning
-    - speak() to vocalize
-    - see() to capture camera images
+    - show() for 12 built-in emotions (curious, joy, thinking, etc.)
+    - show(move=...) for 81 recorded emotions from Pollen (fear1, rage1, serenity1, etc.)
+    - discover() to see available recorded moves
+    - look() for precise head positioning
+    - speak() to vocalize with [move:X] markers for choreography
+    - listen() to hear and transcribe speech
+    - snap() to capture camera images
+    - rest() for neutral pose, sleep, or wake
 
-    Prefer express() over low-level commands when possible.
+    Prefer show() for common emotions, show(move=...) for nuanced expressions.
     """
 )
 
@@ -141,9 +143,11 @@ def get_robot():
     if _robot_instance is None:
         try:
             from reachy_mini import ReachyMini
-            # Use default_no_video for simulation (keeps audio, skips camera)
-            # Use 'no_media' for fully headless, 'default' for real hardware
-            _robot_instance = ReachyMini(media_backend='default_no_video')
+            # Use 'default' for full media (audio + camera) - requires real hardware
+            # Use 'default_no_video' for audio only (simulator compatible)
+            # Use 'no_media' for headless (no audio or camera)
+            backend = os.environ.get("REACHY_MEDIA_BACKEND", "default_no_video")
+            _robot_instance = ReachyMini(media_backend=backend)
             _robot_instance.__enter__()
         except ImportError:
             raise RuntimeError(
@@ -170,10 +174,6 @@ def cleanup_robot():
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================
-
-def degrees_to_radians(degrees: float) -> float:
-    """Convert degrees to radians for SDK calls."""
-    return degrees * (math.pi / 180.0)
 
 
 def create_head_pose_array(z: float = 0, roll: float = 0, pitch: float = 0, yaw: float = 0):
@@ -210,40 +210,8 @@ def get_interpolation_method(method: str):
 # MCP TOOLS
 # ==============================================================================
 
-@mcp.tool()
-def express(
-    emotion: Literal[
-        "neutral", "curious", "uncertain", "recognition", "joy",
-        "thinking", "listening", "agreeing", "disagreeing",
-        "sleepy", "surprised", "focused"
-    ]
-) -> str:
-    """
-    Express an emotion through physical movement.
-
-    High-level tool that maps emotions to motor choreography.
-    Caller specifies WHAT to express; tool handles HOW to move.
-
-    Available emotions:
-    - neutral: Rest position, attentive
-    - curious: Forward lean, alert antennas - "what's that?"
-    - uncertain: Head tilt, asymmetric antennas - "I'm not sure"
-    - recognition: Quick attention, high antennas - "I see you"
-    - joy: Head up, maximum antenna elevation - happiness
-    - thinking: Look away slightly, processing
-    - listening: Attentive lean, focused on input
-    - agreeing: Nodding motion
-    - disagreeing: Shake motion
-    - sleepy: Drooping, low energy
-    - surprised: Pull back, maximum alert
-    - focused: Intent forward gaze
-
-    Args:
-        emotion: The emotional state to express
-
-    Returns:
-        Confirmation of expression executed
-    """
+def _do_express(emotion: str) -> str:
+    """Internal helper - execute an emotion expression."""
     if emotion not in EXPRESSIONS:
         return f"Unknown emotion: {emotion}. Available: {list(EXPRESSIONS.keys())}"
 
@@ -255,7 +223,7 @@ def express(
         antennas = expr["antennas"]
 
         # Convert antenna degrees to radians
-        antenna_radians = [degrees_to_radians(a) for a in antennas]
+        antenna_radians = [math.radians(a) for a in antennas]
 
         robot.goto_target(
             head=create_head_pose_array(
@@ -275,8 +243,55 @@ def express(
         return f"Expression failed: {e}"
 
 
+def _do_move(name: str) -> str:
+    """
+    Execute a move by name - tries built-in emotions first, then Pollen library.
+
+    Built-in emotions are silent (motor-only), Pollen moves may have audio.
+    """
+    if name in EXPRESSIONS:
+        return _do_express(name)
+    return _do_play_move(name)
+
+
 @mcp.tool()
-def look_at(
+def show(
+    emotion: Literal[
+        "neutral", "curious", "uncertain", "recognition", "joy",
+        "thinking", "listening", "agreeing", "disagreeing",
+        "sleepy", "surprised", "focused"
+    ] = "neutral",
+    move: str = ""
+) -> str:
+    """
+    Express an emotion through physical movement.
+
+    High-level tool that maps emotions to motor choreography.
+    Caller specifies WHAT to express; tool handles HOW to move.
+
+    Use `emotion` for 12 built-in expressions (fast, local):
+    - neutral, curious, uncertain, recognition, joy
+    - thinking, listening, agreeing, disagreeing
+    - sleepy, surprised, focused
+
+    Use `move` for 81 recorded emotions from Pollen (e.g., "fear1", "loving1"):
+    - More nuanced, professionally choreographed
+    - Use list_moves() to see all available
+
+    Args:
+        emotion: Built-in emotional state to express
+        move: Recorded move name (overrides emotion if provided)
+
+    Returns:
+        Confirmation of expression executed
+    """
+    if move:
+        return _do_play_move(move)
+    return _do_express(emotion)
+
+
+@mcp.tool()
+def look(
     roll: float = 0,
     pitch: float = 0,
     yaw: float = 0,
@@ -286,7 +301,7 @@ def look_at(
     """
     Direct head positioning in degrees.
 
-    Use this for precise control when express() doesn't fit.
+    Use for precise control when express() doesn't fit.
     For most cases, prefer express() for cognitive simplicity.
 
     Args:
@@ -297,7 +312,7 @@ def look_at(
         duration: Movement time in seconds (0.1 to 5.0)
 
     Returns:
-        Confirmation of movement
+        Confirmation
     """
     # Clamp values to safe ranges
     roll = max(-45, min(45, roll))
@@ -320,92 +335,23 @@ def look_at(
         return f"Movement failed: {e}"
 
 
-@mcp.tool()
-def antenna(
-    left: float = 0,
-    right: float = 0,
-    duration: float = 0.5
-) -> str:
+GROK_VOICES = ["ara", "eve", "leo", "rex", "sal"]
+
+def text_to_speech(text: str, voice: Optional[str] = None) -> str:
     """
-    Control antenna positions for expression.
-
-    Antennas are highly expressive - use for emotional signaling.
-    Symmetric = stable emotion. Asymmetric = uncertainty/confusion.
-
-    Args:
-        left: Left antenna angle (-45 to 90). Positive = up
-        right: Right antenna angle (-45 to 90). Positive = up
-        duration: Movement time in seconds
-
-    Returns:
-        Confirmation
-    """
-    left = max(-45, min(90, left))
-    right = max(-45, min(90, right))
-    duration = max(0.1, min(3.0, duration))
-
-    robot = get_robot()
-
-    try:
-        robot.goto_target(
-            antennas=[degrees_to_radians(left), degrees_to_radians(right)],
-            duration=duration,
-            method=get_interpolation_method("ease_in_out")
-        )
-        return f"Antennas: left={left}°, right={right}°"
-
-    except Exception as e:
-        return f"Antenna movement failed: {e}"
-
-
-@mcp.tool()
-def rotate(
-    direction: Literal["left", "right", "center"],
-    degrees: float = 45
-) -> str:
-    """
-    Rotate body toward a direction.
-
-    Use to orient toward or away from something.
-
-    Args:
-        direction: Which way to turn
-        degrees: How far to turn (10-180)
-
-    Returns:
-        Confirmation
-    """
-    degrees = max(10, min(180, abs(degrees)))
-
-    if direction == "left":
-        yaw = -degrees_to_radians(degrees)
-    elif direction == "right":
-        yaw = degrees_to_radians(degrees)
-    else:  # center
-        yaw = 0
-
-    robot = get_robot()
-
-    try:
-        robot.goto_target(
-            body_yaw=yaw,
-            duration=1.5,
-            method=get_interpolation_method("minjerk")
-        )
-        return f"Rotated {direction}" + (f" {degrees}°" if direction != "center" else "")
-
-    except Exception as e:
-        return f"Rotation failed: {e}"
-
-
-def text_to_speech(text: str) -> str:
-    """
-    Convert text to speech using Deepgram TTS.
+    Convert text to speech. Uses Grok Voice if available, falls back to Deepgram.
     Returns path to temporary audio file.
     """
+    xai_key = os.environ.get("XAI_API_KEY")
+    if xai_key:
+        return grok_text_to_speech(text, xai_key, voice)
+    return deepgram_text_to_speech(text)
+
+
+def deepgram_text_to_speech(text: str) -> str:
+    """Convert text to speech using Deepgram TTS (Aura 2)."""
     import tempfile
     import httpx
-    import os
 
     api_key = os.environ.get("DEEPGRAM_API_KEY")
     if not api_key:
@@ -429,74 +375,334 @@ def text_to_speech(text: str) -> str:
     return temp_file.name
 
 
+def grok_text_to_speech(text: str, api_key: str, voice: Optional[str] = None) -> str:
+    """
+    Convert text to speech using Grok Voice via OpenAI SDK.
+
+    Uses the OpenAI-compatible Realtime API with Grok's base URL.
+    Available voices: ara, eve, leo, rex, sal
+
+    Based on dillera's reachy_mini_conversation_app (HuggingFace).
+    """
+    import tempfile
+    import asyncio
+
+    # Voice priority: parameter > env var > default
+    if voice and voice.lower() in GROK_VOICES:
+        voice = voice.lower()
+    else:
+        voice = os.environ.get("GROK_VOICE", "eve").lower()
+
+    async def _get_audio():
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.x.ai/v1"
+        )
+
+        audio_chunks = []
+
+        async with client.realtime.connect(model="grok-beta") as conn:
+            # Configure session for TTS
+            # Grok uses top-level "voice", OpenAI uses "audio.output.voice"
+            await conn.session.update(
+                session={
+                    "modalities": ["audio", "text"],
+                    "voice": voice,  # Grok's format
+                    "instructions": "Repeat exactly what the user says. Nothing more.",
+                    "turn_detection": None,
+                }
+            )
+
+            # Send text to speak
+            await conn.conversation.item.create(
+                item={
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": f"Say exactly: {text}"}]
+                }
+            )
+
+            # Request response (no tools)
+            await conn.response.create(response={"tool_choice": "none"})
+
+            # Collect audio chunks
+            async for event in conn:
+                if event.type == "response.output_audio.delta":
+                    audio_chunks.append(event.delta)
+                elif event.type in ("response.output_audio.done", "response.done"):
+                    break
+                elif event.type == "error":
+                    raise RuntimeError(f"Grok error: {event}")
+
+        return audio_chunks
+
+    # Run async function
+    audio_chunks = asyncio.run(_get_audio())
+
+    if not audio_chunks:
+        raise RuntimeError("No audio received from Grok")
+
+    # Decode base64 audio chunks and combine
+    pcm_data = b"".join(base64.b64decode(chunk) for chunk in audio_chunks)
+
+    # Convert PCM to WAV (24kHz 16-bit mono)
+    import wave
+    temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    with wave.open(temp_file.name, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(24000)
+        wav.writeframes(pcm_data)
+
+    return temp_file.name
+
+
+def speech_to_text(audio_data: bytes) -> str:
+    """
+    Convert audio to text using Deepgram STT (Nova-2).
+
+    Args:
+        audio_data: Raw audio bytes (WAV format expected from robot)
+
+    Returns:
+        Transcribed text
+    """
+    import httpx
+
+    api_key = os.environ.get("DEEPGRAM_API_KEY")
+    if not api_key:
+        raise RuntimeError("DEEPGRAM_API_KEY environment variable not set")
+
+    # Deepgram pre-recorded transcription endpoint
+    url = "https://api.deepgram.com/v1/listen?model=nova-2&punctuate=true&smart_format=true"
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "Content-Type": "audio/wav"
+    }
+
+    response = httpx.post(url, headers=headers, content=audio_data, timeout=30.0)
+    response.raise_for_status()
+
+    result = response.json()
+
+    # Extract transcript from Deepgram response
+    try:
+        transcript = result["results"]["channels"][0]["alternatives"][0]["transcript"]
+        return transcript if transcript else ""
+    except (KeyError, IndexError):
+        return ""
+
+
+def _parse_choreographed_text(text: str) -> list[dict]:
+    """
+    Parse text with embedded move markers.
+
+    Syntax: "Hello [move:enthusiastic1] world [move:grateful1]"
+
+    Returns list of segments:
+        [{"type": "text", "content": "Hello "},
+         {"type": "move", "name": "enthusiastic1"},
+         {"type": "text", "content": " world "},
+         {"type": "move", "name": "grateful1"}]
+    """
+    import re
+    segments = []
+    pattern = r'\[move:([^\]]+)\]'
+    last_end = 0
+
+    for match in re.finditer(pattern, text):
+        # Text before the marker
+        if match.start() > last_end:
+            segments.append({"type": "text", "content": text[last_end:match.start()]})
+        # The move marker
+        segments.append({"type": "move", "name": match.group(1)})
+        last_end = match.end()
+
+    # Remaining text after last marker
+    if last_end < len(text):
+        segments.append({"type": "text", "content": text[last_end:]})
+
+    return segments
+
+
 @mcp.tool()
-def speak(text: str) -> str:
+def speak(
+    text: str,
+    listen_after: float = 0,
+    voice: Literal["ara", "eve", "leo", "rex", "sal"] = "eve"
+) -> str:
     """
     Speak through the robot's speaker.
 
-    Uses text-to-speech to vocalize. For pre-recorded audio,
-    provide a file path instead of text.
+    Uses text-to-speech to vocalize. Supports embedded move markers
+    for choreographed performances where speech and motion happen together.
+
+    Syntax for embedded moves:
+        "This is amazing [move:enthusiastic1] Jack, wonderful idea [move:grateful1]"
+
+    Moves play concurrently with speech (non-blocking).
+    Use list_moves() to see available move names.
 
     Args:
-        text: What to say (or path to audio file)
+        text: What to say, optionally with [move:name] markers
+        listen_after: Seconds to listen after speaking (0 = don't listen)
+        voice: Grok voice - ara (warm), eve (energetic), leo (authoritative), rex (confident), sal (neutral)
 
     Returns:
-        Confirmation
+        Confirmation, plus transcription if listen_after > 0
     """
     robot = get_robot()
 
+    result_parts = []
+
     try:
-        # Check if it's a file path
+        # Check if it's a file path (no choreography support for raw audio)
         if text.endswith(('.wav', '.mp3', '.ogg')):
             robot.media.play_sound(text)
-            return f"Played audio: {text}"
+            result_parts.append(f"Played audio: {text}")
+
+        # Check for embedded moves
+        elif '[move:' in text:
+            segments = _parse_choreographed_text(text)
+            moves_triggered = []
+            speech_parts = []
+            pending_move = None
+
+            for segment in segments:
+                if segment["type"] == "move":
+                    # Queue the move to fire before the next speech chunk
+                    pending_move = segment["name"]
+                elif segment["type"] == "text":
+                    content = segment["content"].strip()
+                    if content:
+                        # Fire pending move and wait for it to complete
+                        if pending_move:
+                            _do_move(pending_move)
+                            _wait_for_moves_complete(timeout=10.0)
+                            moves_triggered.append(pending_move)
+                            pending_move = None
+
+                        # Speak this chunk with proper temp file cleanup
+                        audio_path = text_to_speech(content, voice)
+                        try:
+                            robot.media.play_sound(audio_path)
+                        finally:
+                            os.unlink(audio_path)
+                        speech_parts.append(content)
+
+            # Fire any trailing move (if text ends with a move marker)
+            if pending_move:
+                _do_move(pending_move)
+                moves_triggered.append(pending_move)
+
+            result_parts.append(f"Performed: '{' '.join(speech_parts)}' with moves: {moves_triggered}")
+
         else:
-            # Convert text to speech via Deepgram
-            audio_path = text_to_speech(text)
-            robot.media.play_sound(audio_path)
+            # Simple speech - no choreography
+            audio_path = text_to_speech(text, voice)
+            try:
+                robot.media.play_sound(audio_path)
+            finally:
+                os.unlink(audio_path)
+            result_parts.append(f"Spoke: {text}")
 
-            # Clean up temp file
-            import os
-            os.unlink(audio_path)
+        # Listen after speaking if requested
+        if listen_after > 0:
+            import time
+            # Wait for audio playback to complete before listening
+            # This prevents the mic from picking up the robot's own voice
+            _wait_for_moves_complete(timeout=30.0)
+            time.sleep(0.5)  # Buffer for audio pipeline latency
 
-            return f"Spoke: {text}"
+            transcript = _do_listen(listen_after)
+            if transcript:
+                result_parts.append(f"Heard: {transcript}")
+            else:
+                result_parts.append("Heard: (silence or unclear audio)")
+
+        return " | ".join(result_parts)
 
     except Exception as e:
         return f"Speech failed: {e}"
 
 
+def _do_listen(duration: float) -> str:
+    """Internal helper - capture and transcribe audio."""
+    import time
+    import io
+    import wave
+    import numpy as np
+
+    duration = max(1, min(30, duration))
+    robot = get_robot()
+
+    # Record with proper cleanup
+    robot.media.start_recording()
+    try:
+        time.sleep(duration)
+        audio_data = robot.media.get_audio_sample()
+    finally:
+        robot.media.stop_recording()
+
+    if audio_data is not None and len(audio_data) > 0:
+        # Convert numpy array to WAV bytes for Deepgram
+        sample_rate = robot.media.get_input_audio_samplerate()
+        channels = robot.media.get_input_channels()
+
+        # Create WAV file in memory
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, 'wb') as wav_file:
+            wav_file.setnchannels(channels if channels > 0 else 1)
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(sample_rate if sample_rate > 0 else 16000)
+
+            # Convert float32 to int16
+            if isinstance(audio_data, np.ndarray):
+                if audio_data.dtype == np.float32:
+                    audio_int16 = (audio_data * 32767).astype(np.int16)
+                else:
+                    audio_int16 = audio_data.astype(np.int16)
+                wav_file.writeframes(audio_int16.tobytes())
+            else:
+                wav_file.writeframes(audio_data)
+
+        wav_bytes = wav_buffer.getvalue()
+
+        # Transcribe via Deepgram STT
+        transcript = speech_to_text(wav_bytes)
+        return transcript if transcript else ""
+    else:
+        return ""
+
+
 @mcp.tool()
 def listen(duration: float = 3.0) -> str:
     """
-    Listen through the robot's microphones.
+    Listen through the robot's microphones and transcribe.
 
-    Captures audio for the specified duration.
-    Returns base64-encoded audio data.
+    Captures audio for the specified duration and converts to text
+    using Deepgram Nova-2 speech-to-text.
 
     Args:
         duration: How long to listen in seconds (1-30)
 
     Returns:
-        Base64-encoded audio sample
+        Transcribed text of what was heard
     """
-    duration = max(1, min(30, duration))
-    robot = get_robot()
-
     try:
-        audio_data = robot.media.get_audio_sample(duration=duration)
-
-        if audio_data is not None:
-            encoded = base64.b64encode(audio_data).decode('utf-8')
-            return f"Audio captured ({duration}s): {encoded[:100]}..."
+        transcript = _do_listen(duration)
+        if transcript:
+            return f"Heard: {transcript}"
         else:
-            return "No audio captured"
-
+            return "Heard: (silence or unclear audio)"
     except Exception as e:
         return f"Listen failed: {e}"
 
 
 @mcp.tool()
-def see() -> str:
+def snap() -> str:
     """
     Capture an image from the robot's camera.
 
@@ -526,141 +732,125 @@ def see() -> str:
 
 
 @mcp.tool()
-def rest() -> str:
+def rest(mode: Literal["neutral", "sleep", "wake"] = "neutral") -> str:
     """
-    Return to neutral rest position.
+    Control robot rest state.
 
-    Use when transitioning away or ending interaction.
-    Gentle movement to default pose.
-
-    Returns:
-        Confirmation
-    """
-    return express("neutral")
-
-
-@mcp.tool()
-def wake_up() -> str:
-    """
-    Wake up the robot from sleep mode.
-
-    Call this before any other movements.
+    Args:
+        mode:
+            - "neutral": Return to neutral pose (default)
+            - "sleep": Enter sleep mode (low power)
+            - "wake": Wake from sleep mode
 
     Returns:
         Confirmation
     """
     robot = get_robot()
     try:
-        robot.wake_up()
-        return "Robot awakened"
+        if mode == "sleep":
+            robot.goto_sleep()
+            return "Robot sleeping"
+        elif mode == "wake":
+            robot.wake_up()
+            return "Robot awakened"
+        else:  # neutral
+            return _do_express("neutral")
     except Exception as e:
-        return f"Wake up failed: {e}"
-
-
-@mcp.tool()
-def sleep() -> str:
-    """
-    Put the robot into sleep mode.
-
-    Use when ending interaction or to save power.
-
-    Returns:
-        Confirmation
-    """
-    robot = get_robot()
-    try:
-        robot.goto_sleep()
-        return "Robot sleeping"
-    except Exception as e:
-        return f"Sleep failed: {e}"
+        return f"Rest failed: {e}"
 
 
 # ==============================================================================
-# COMPOUND EXPRESSIONS (sequences)
+# RECORDED MOVES (Pollen's emotion/dance libraries)
 # ==============================================================================
 
-@mcp.tool()
-def nod(times: int = 2) -> str:
+DAEMON_URL = os.environ.get("REACHY_DAEMON_URL", "http://localhost:8321/api")
+
+
+def _wait_for_moves_complete(timeout: float = 30.0, poll_interval: float = 0.1) -> bool:
     """
-    Nod head in agreement.
+    Wait for all moves to complete by polling the daemon.
 
-    Args:
-        times: Number of nods (1-5)
-
-    Returns:
-        Confirmation
+    Returns True if moves completed, False if timeout.
     """
-    times = max(1, min(5, times))
-    robot = get_robot()
+    import time
+    import httpx
 
-    try:
-        for _ in range(times):
-            # Nod down
-            robot.goto_target(
-                head=create_head_pose_array(pitch=15, z=3),
-                duration=0.25,
-                method=get_interpolation_method("ease_in_out")
-            )
-            # Nod up
-            robot.goto_target(
-                head=create_head_pose_array(pitch=-5, z=-2),
-                duration=0.25,
-                method=get_interpolation_method("ease_in_out")
-            )
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(f"{DAEMON_URL}/move/running", timeout=2.0)
+            if response.status_code == 200:
+                running = response.json()
+                if not running:  # Empty list = all moves done
+                    return True
+        except:
+            pass  # Connection error, keep polling
+        time.sleep(poll_interval)
+    return False
 
-        # Return to neutral
-        robot.goto_target(
-            head=create_head_pose_array(pitch=0, z=0),
-            duration=0.3,
-            method=get_interpolation_method("minjerk")
-        )
 
-        return f"Nodded {times} time(s)"
-
-    except Exception as e:
-        return f"Nod failed: {e}"
+MOVE_LIBRARIES = {
+    "emotions": "pollen-robotics/reachy-mini-emotions-library",
+    "dances": "pollen-robotics/reachy-mini-dances-library",
+}
 
 
 @mcp.tool()
-def shake(times: int = 2) -> str:
+def discover(library: Literal["emotions", "dances"] = "emotions") -> str:
     """
-    Shake head in disagreement.
+    Discover available moves from Pollen's HuggingFace libraries.
+
+    Returns move names that can be passed to show(move=...).
+    Moves are professionally choreographed by Pollen Robotics.
 
     Args:
-        times: Number of shakes (1-5)
+        library: Which library - "emotions" (81 expressions) or "dances"
 
     Returns:
-        Confirmation
+        Available move names
     """
-    times = max(1, min(5, times))
-    robot = get_robot()
+    import httpx
+
+    dataset = MOVE_LIBRARIES.get(library)
+    if not dataset:
+        return f"Unknown library: {library}. Available: {list(MOVE_LIBRARIES.keys())}"
 
     try:
-        for _ in range(times):
-            # Turn right
-            robot.goto_target(
-                head=create_head_pose_array(yaw=20),
-                duration=0.2,
-                method=get_interpolation_method("ease_in_out")
-            )
-            # Turn left
-            robot.goto_target(
-                head=create_head_pose_array(yaw=-20),
-                duration=0.2,
-                method=get_interpolation_method("ease_in_out")
-            )
-
-        # Return to center
-        robot.goto_target(
-            head=create_head_pose_array(yaw=0),
-            duration=0.3,
-            method=get_interpolation_method("minjerk")
+        response = httpx.get(
+            f"{DAEMON_URL}/move/recorded-move-datasets/list/{dataset}",
+            timeout=10.0
         )
-
-        return f"Shook head {times} time(s)"
-
+        response.raise_for_status()
+        moves = response.json()
+        return f"Available {library} ({len(moves)}): {', '.join(sorted(moves))}"
+    except httpx.ConnectError:
+        return "Cannot connect to daemon. Is it running on localhost:8321?"
     except Exception as e:
-        return f"Shake failed: {e}"
+        return f"Failed to list moves: {e}"
+
+
+def _do_play_move(move_name: str, library: str = "emotions") -> str:
+    """Internal helper - play a recorded move."""
+    import httpx
+
+    dataset = MOVE_LIBRARIES.get(library)
+    if not dataset:
+        return f"Unknown library: {library}. Available: {list(MOVE_LIBRARIES.keys())}"
+
+    try:
+        response = httpx.post(
+            f"{DAEMON_URL}/move/play/recorded-move-dataset/{dataset}/{move_name}",
+            timeout=30.0
+        )
+        if response.status_code == 404:
+            return f"Move '{move_name}' not found in {library}. Use discover() to see available options."
+        response.raise_for_status()
+        result = response.json()
+        return f"Playing: {move_name} (uuid: {result.get('uuid', 'unknown')})"
+    except httpx.ConnectError:
+        return "Cannot connect to daemon. Is it running on localhost:8321?"
+    except Exception as e:
+        return f"Failed to play move: {e}"
 
 
 # ==============================================================================

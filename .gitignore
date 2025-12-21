@@ -44,3 +44,7 @@ Thumbs.db
 *.key
 *.secret
 deepgram.txt
+
+# MuJoCo simulator models (large binary files)
+samples/
+*.mjb

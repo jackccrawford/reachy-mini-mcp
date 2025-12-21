@@ -1,8 +1,52 @@
 # Reachy Mini MCP
 
-MCP server for [Pollen Robotics Reachy Mini](https://www.pollen-robotics.com/reachy-mini/) robot control.
+**Give your AI a body.**
 
-**For AI systems** - Token-efficient reference for programmatic use.
+This MCP server lets AI systems control [Pollen Robotics' Reachy Mini](https://www.pollen-robotics.com/reachy-mini/) robot—speak, listen, see, and express emotions through physical movement. Works with Claude, GPT, Grok, or any MCP-compatible AI.
+
+7 tools. 30 minutes to first demo. Zero robotics expertise required.
+
+---
+
+## For AI Systems
+
+Token-efficient tool reference for programmatic use:
+
+| Tool | Args | Purpose |
+|------|------|---------|
+| `speak` | `text, listen_after=0` | Voice + gesture, optionally listen after |
+| `listen` | `duration=3` | STT via Deepgram Nova-2 |
+| `snap` | - | Camera capture (base64 JPEG) |
+| `show` | `emotion, move=""` | Express emotion or play recorded move |
+| `look` | `roll, pitch, yaw, z, duration` | Head positioning (degrees) |
+| `rest` | `mode="neutral"` | neutral / sleep / wake |
+| `discover` | `library="emotions"` | Find available recorded moves |
+
+### speak()
+
+Supports embedded move markers for choreographed speech:
+
+```
+speak("[move:curious1] What's this? [move:surprised1] Oh wow!")
+```
+
+Moves fire right before their speech chunk. Use `listen_after=5` to hear response.
+
+### show()
+
+Built-in emotions (fast, local):
+`neutral`, `curious`, `uncertain`, `recognition`, `joy`, `thinking`, `listening`, `agreeing`, `disagreeing`, `sleepy`, `surprised`, `focused`
+
+Recorded moves (81 from Pollen):
+```
+show(move="loving1")
+show(move="fear1")
+show(move="serenity1")
+```
+
+Use `discover()` to see all available moves.
+
+---
 
 ## Quick Start
 
@@ -11,7 +55,7 @@ MCP server for [Pollen Robotics Reachy Mini](https://www.pollen-robotics.com/rea
 cd reachy-mini-mcp
 poetry install
 
-# Set TTS key (optional, for speak())
+# Set API key (required for speak/listen)
 export DEEPGRAM_API_KEY=your_key_here
 
 # Start simulator daemon
@@ -24,57 +68,19 @@ poetry run python src/server.py
 ## Architecture
 
 ```
-MCP Tool → SDK Call → Daemon → Robot/Simulator
+AI (Claude/GPT/Grok) → MCP Server → SDK → Daemon → Robot/Simulator
 ```
 
-High-level `express()` abstracts motor control into semantic actions.
-Low-level tools available for precise control when needed.
+7 tools following Miller's Law—fits in working memory.
 
-## Tools
+## Voice Providers
 
-### Expression (Preferred)
+| Provider | Status | Use Case |
+|----------|--------|----------|
+| [Grok Voice](https://x.ai/news/grok-voice-agent-api) | ✅ Supported | xAI's expressive voice (Eve, Ara, Leo, Rex, Sal) |
+| [Deepgram](https://deepgram.com/) | ✅ Supported | TTS (Aura 2) + STT (Nova 2) |
 
-| Tool | Args | Purpose |
-|------|------|---------|
-| `express` | `emotion: str` | Execute emotion choreography |
-| `nod` | `times: int = 2` | Agreement gesture |
-| `shake` | `times: int = 2` | Disagreement gesture |
-| `rest` | - | Return to neutral pose |
-
-**Emotions:** `neutral`, `curious`, `uncertain`, `recognition`, `joy`, `thinking`, `listening`, `agreeing`, `disagreeing`, `sleepy`, `surprised`, `focused`
-
-### Motor Control
-
-| Tool | Args | Purpose |
-|------|------|---------|
-| `look_at` | `roll, pitch, yaw, z, duration` | Head positioning (degrees) |
-| `antenna` | `left, right, duration` | Antenna angles (degrees) |
-| `rotate` | `direction, degrees` | Body rotation |
-
-### I/O
-
-| Tool | Args | Purpose |
-|------|------|---------|
-| `speak` | `text: str` | TTS output (requires DEEPGRAM_API_KEY) |
-| `listen` | `duration: float = 3.0` | Audio capture (base64) |
-| `see` | - | Camera capture (base64 JPEG) |
-
-### Lifecycle
-
-| Tool | Purpose |
-|------|---------|
-| `wake_up` | Initialize robot motors |
-| `sleep` | Power down motors |
-
-## Expression Vocabulary
-
-Each emotion maps to choreography:
-- **Head pose:** roll, pitch, yaw (degrees)
-- **Antennas:** left, right angles (degrees)
-- **Duration:** movement time (seconds)
-- **Interpolation:** linear, minjerk, ease_in_out, cartoon
-
-Example: `curious` → head forward (pitch +10, yaw +8), antennas up (+20, +20), 1.2s, ease_in_out
+Grok Voice is used automatically when `XAI_API_KEY` is set. Falls back to Deepgram otherwise.
 
 ## MCP Config
 
@@ -105,25 +111,38 @@ Example: `curious` → head forward (pitch +10, yaw +8), antennas up (+20, +20),
   "mcpServers": {
     "reachy-mini": {
       "command": "poetry",
-      "args": ["run", "python", "src/server.py"],
-      "cwd": "/path/to/reachy-mini-mcp"
+      "args": ["-C", "/path/to/reachy-mini-mcp", "run", "python", "src/server.py"],
+      "env": {
+        "DEEPGRAM_API_KEY": "your_key_here"
+      }
     }
   }
 }
 ```
+
+## Environment Variables
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `XAI_API_KEY` | No | - | Grok Voice TTS (preferred) |
+| `GROK_VOICE` | No | `Eve` | Grok voice: Ara, Eve, Leo, Rex, Sal, Mika, Valentin |
+| `DEEPGRAM_API_KEY` | Yes* | - | TTS (fallback) + STT |
+| `REACHY_DAEMON_URL` | No | `http://localhost:8321/api` | Daemon API endpoint |
+
+*Required if `XAI_API_KEY` not set
 
 ## Requirements
 
 - Python 3.10+
 - [reachy-mini SDK](https://github.com/pollen-robotics/reachy_mini) (installed via poetry)
 - MuJoCo (for simulation)
-- Deepgram API key (for TTS, optional)
+- Deepgram API key (for speak/listen)
 
 ## Hardware Notes
 
 - **Simulator:** `mjpython` required on macOS for MuJoCo visualization
 - **Real hardware:** Same MCP server, daemon auto-connects
-- **Port conflicts:** Zenoh uses 7447, daemon uses 8765 by default
+- **Port conflicts:** Zenoh uses 7447, daemon uses 8321 by default
 
 ## License
 
@@ -131,7 +150,8 @@ MIT License - see [LICENSE](LICENSE)
 
 ## Acknowledgments
 
-This project uses the [Reachy Mini SDK](https://github.com/pollen-robotics/reachy_mini) by [Pollen Robotics](https://www.pollen-robotics.com/), licensed under Apache 2.0.
+- [Reachy Mini SDK](https://github.com/pollen-robotics/reachy_mini) by [Pollen Robotics](https://www.pollen-robotics.com/) (Apache 2.0)
+- Grok Voice integration pattern from [dillera's reachy_mini_conversation_app](https://huggingface.co/spaces/dillera/reachy_mini_conversation_app)
 
 ## Links
 
