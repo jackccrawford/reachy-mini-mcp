@@ -577,9 +577,10 @@ def speak(
                 elif segment["type"] == "text":
                     content = segment["content"].strip()
                     if content:
-                        # Fire pending move right before this speech chunk
+                        # Fire pending move and wait for it to complete
                         if pending_move:
                             _do_move(pending_move)
+                            _wait_for_moves_complete(timeout=10.0)
                             moves_triggered.append(pending_move)
                             pending_move = None
 
