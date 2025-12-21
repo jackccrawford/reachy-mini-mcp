@@ -783,7 +783,7 @@ def _wait_for_moves_complete(timeout: float = 30.0, poll_interval: float = 0.1) 
                 running = response.json()
                 if not running:  # Empty list = all moves done
                     return True
-        except:
+        except (httpx.RequestError, httpx.TimeoutException):
             pass  # Connection error, keep polling
         time.sleep(poll_interval)
     return False

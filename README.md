@@ -125,11 +125,11 @@ Grok Voice is used automatically when `XAI_API_KEY` is set. Falls back to Deepgr
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `XAI_API_KEY` | No | - | Grok Voice TTS (preferred) |
-| `GROK_VOICE` | No | `Eve` | Grok voice: Ara, Eve, Leo, Rex, Sal, Mika, Valentin |
-| `DEEPGRAM_API_KEY` | Yes* | - | TTS (fallback) + STT |
+| `GROK_VOICE` | No | `eve` | Grok voice: ara, eve, leo, rex, sal |
+| `DEEPGRAM_API_KEY` | Yes* | - | STT (always required for listen) + TTS fallback |
 | `REACHY_DAEMON_URL` | No | `http://localhost:8321/api` | Daemon API endpoint |
 
-*Required if `XAI_API_KEY` not set
+*Required for `listen()`. Also required for `speak()` if `XAI_API_KEY` not set
 
 ## Requirements
 
