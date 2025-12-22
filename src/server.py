@@ -166,8 +166,8 @@ def cleanup_robot():
     if _robot_instance is not None:
         try:
             _robot_instance.__exit__(None, None, None)
-        except:
-            pass
+        except Exception:
+            pass  # Best effort cleanup on shutdown
         _robot_instance = None
 
 
@@ -438,8 +438,19 @@ def grok_text_to_speech(text: str, api_key: str, voice: Optional[str] = None) ->
 
         return audio_chunks
 
-    # Run async function
-    audio_chunks = asyncio.run(_get_audio())
+    # Run async function (handle case where event loop may already exist)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None:
+        # Already in async context - use nest_asyncio or create task
+        import nest_asyncio
+        nest_asyncio.apply()
+        audio_chunks = asyncio.run(_get_audio())
+    else:
+        audio_chunks = asyncio.run(_get_audio())
 
     if not audio_chunks:
         raise RuntimeError("No audio received from Grok")

@@ -12,6 +12,7 @@ fastmcp = "^2.0.0"
 reachy-mini = {git = "https://github.com/pollen-robotics/reachy_mini.git", branch = "develop", extras = ["mujoco"]}
 openai = "^1.50.0"
 websockets = "^13.0"
+nest-asyncio = "^1.6.0"
 
 [tool.poetry.scripts]
 reachy-mini-mcp = "src.server:main"

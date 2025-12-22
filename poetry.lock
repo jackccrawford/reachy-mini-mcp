@@ -2077,6 +2077,18 @@ files = [
 typing-extensions = {version = ">=4.1.0", markers = "python_version < \"3.11\""}
 
 [[package]]
+name = "nest-asyncio"
+version = "1.6.0"
+description = "Patch asyncio to allow nested event loops"
+optional = false
+python-versions = ">=3.5"
+groups = ["main"]
+files = [
+    {file = "nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c"},
+    {file = "nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe"},
+]
+
+[[package]]
 name = "numpy"
 version = "2.2.6"
 description = "Fundamental package for array computing in Python"
@@ -3033,7 +3045,7 @@ prompt_toolkit = ">=2.0,<4.0"
 
 [[package]]
 name = "reachy-mini"
-version = "1.2.3"
+version = "1.2.4rc3"
 description = ""
 optional = false
 python-versions = ">=3.10"
@@ -3084,7 +3096,7 @@ wireless-version = ["gpiozero (>=2.0.0)", "lgpio (>=0.2.2.0)", "nmcli (>=1.5)", 
 type = "git"
 url = "https://github.com/pollen-robotics/reachy_mini.git"
 reference = "develop"
-resolved_reference = "eec7a5dfa105bbe72ac93e33f7de64d1cf6891a9"
+resolved_reference = "780ae56af74e1f7c17ae81f5b73ddc07f61252fc"
 
 [[package]]
 name = "reachy-mini-motor-controller"
@@ -4374,4 +4386,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "104f2134aa5b617644e56b64251efc84cabfbf3788c847c98aa24b6ec9cd95a6"
+content-hash = "1ed75cbdbd0a2e9d97e75480ff6a6979376e981dedfd520b264bf46a7c17c4eb"
