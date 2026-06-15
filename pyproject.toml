@@ -2,6 +2,7 @@
 name = "reachy-mini-mcp"
 version = "0.3.0"
 description = "MCP server for Reachy Mini robot"
+license = "MIT"
 authors = ["Jack C Crawford <jack@mvara.ai>", "Eclipse <eclipse@mvara.ai>", "Regenera <regenera@mvara.ai>"]
 readme = "README.md"
 packages = [{include = "src"}]
