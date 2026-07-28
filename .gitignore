@@ -41,6 +41,7 @@ Thumbs.db
 # API Keys and secrets
 .env
 .env.*
+!.env.example
 *.key
 *.secret
 deepgram.txt
@@ -48,3 +49,6 @@ deepgram.txt
 # MuJoCo simulator models (large binary files)
 samples/
 *.mjb
+
+# HF app local env
+.hfappenv/
